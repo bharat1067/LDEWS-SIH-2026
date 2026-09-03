@@ -27,8 +27,11 @@ import {
   Activity
 } from 'lucide-react';
 import './styles.css';
-
 const API = import.meta.env.VITE_API_URL || 'https://ldews-backend.onrender.com/api';
+
+export const api = async (path, options = {}) => {
+  return fetch(`${API}${path}`, options);
+};
 const Auth = createContext();
 export const useAuth = () => useContext(Auth);
 
