@@ -1,0 +1,28 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Do not push the raw massive dataset to GitHub (too large)
+data/Lumpy Skin Images Dataset/
+
+# We should push the trained models so they work out of the box!
+# (Keep model_registry/ uncommented)
+
+# Do not push environment variables or secrets if we had them
+.env
+
+# Node.js
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn-debug.log
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/
+
+# Database
+*.sqlite
+*.sqlite3
+db/*.sql
