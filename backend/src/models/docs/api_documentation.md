@@ -14,9 +14,13 @@ The server runs on `http://0.0.0.0:8000` by default.
 ```json
 {
   "species": "Cow",
-  "symptoms": [1, 5, 12]
+  "symptoms": [1, 5, 12],
+  "is_vaccinated": false
 }
 ```
+
+> [!NOTE]
+> `is_vaccinated` is **optional** (defaults to `false`). Set it to `true` if the animal has a current vaccination record against the suspected disease. This is passed as a binary feature into the ML model and statistically shifts the confidence toward differential diagnoses.
 
 ### Output (JSON Response)
 ```json

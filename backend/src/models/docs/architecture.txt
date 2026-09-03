@@ -1,5 +1,6 @@
                             ┌─────────────────────┐
                             │    FIELD WORKER     │
+                            │   (field_reports)   │
                             └──────────┬──────────┘
                                        │
                               SYMPTOMS + PHOTO + GPS
@@ -12,35 +13,46 @@
                       │                │                 │
              ┌────────▼───────┐ ┌──────▼───────┐ ┌───────▼────────┐
              │   SYMPTOM ML   │ │   IMAGE ML   │ │SPATIAL OUTBREAK│
-             │   (Tabular)    │ │(CNN ResNet18)│ │  CLUSTERING    │
+             │(POST /predict) │ │/predict-image│ │/detect-outbreaks
              └────────┬───────┘ └──────┬───────┘ │    (DBSCAN)    │
                       │                │         └───────┬────────┘
                       └───────┬────────┘                 │
                               ▼                          ▼
                      ┌─────────────────┐        ┌──────────────────┐
                      │ PREDICTION CONF │        │  HOTSPOT ALERTS  │
-                     │  (Multimodal)   │        └──────────────────┘
-                     └────────┬────────┘                
-                              │
-             ┌────────────────┴────────────────┐
-             ▼                                 ▼
-      HIGH CONFIDENCE                  LOW CONF / HIGH RISK
-             │                                 │
-             ▼                                 ▼
-      ┌───────────────┐                ┌───────────────┐
-      │ AUTO-ADVISORY │                │ VET DIAGNOSIS │
-      └───────────────┘                └───────┬───────┘
-                                               │
-                                               ▼
-                                      ┌─────────────────┐
-                                      │   LAB REPORT    │
-                                      │(Final Verifier) │
-                                      └────────┬────────┘
-                                               │
-                                               ▼
-                                      ┌─────────────────┐
-                                      │  GROUND TRUTH   │
-                                      └────────┬────────┘
+                     │  (Multimodal)   │        └────────┬─────────┘
+                     └────────┬────────┘                 │
+                              │                          │
+             ┌────────────────┴────────────────┐         │
+             ▼                                 ▼         │
+      HIGH CONFIDENCE                  LOW CONFIDENCE    │
+    (Immediate Advisory)             (Immediate Alert)   │
+             │                                 │         │
+             └────────────────┬────────────────┘         │
+                              │                          │
+                              ▼                          ▼
+                     ┌───────────────────────────────────┐
+                     │      MERN ESCALATION ENGINE       │
+                     │  (Flags High Risk & Outbreaks)    │
+                     └────────────────┬──────────────────┘
+                                      │
+                                      ▼
+                            ┌─────────────────┐
+                            │  VET DIAGNOSIS  │
+                            │(vet_verifications)
+                            └────────┬────────┘
+                                     │
+                                     ▼
+                            ┌─────────────────┐
+                            │   LAB REPORT    │
+                            │  (lab_reports)  │
+                            └────────┬────────┘
+                                     │
+                                     ▼
+                            ┌─────────────────┐
+                            │  GROUND TRUTH   │
+                            │  (SQL JOINs)    │
+                            └────────┬────────┘
                                                │
                                                ▼
                                       ┌─────────────────┐
@@ -67,3 +79,19 @@ RULES FOR UPDATING TRAINING:
 2. Data Quality: Only incorporate data into the training set if it has been verified by a Lab Report (or high-confidence Vet Diagnosis if lab is unavailable).
 3. Performance Drift: Retrain if model confidence or real-world accuracy drops below acceptable thresholds on recent data.
 4. Periodic Updates: Run scheduled retraining cycles (e.g., monthly/quarterly) incorporating all new verified data.
+
+--------------------------------------------------------------------------------
+MAPPING TO API ENDPOINTS & SQL TABLES:
+
+[Inference Node / AI Endpoints]
+- Symptom ML (Tabular)      -> POST /predict
+- Image ML (CNN)            -> POST /predict-image
+- Spatial Outbreak          -> POST /detect-outbreaks
+- Model Hot-Reload          -> POST /reload-model
+
+[Data Flow / SQL Tables]
+- Field Worker Input        -> `field_reports` table (Symptoms, Species, GPS, Photos)
+- Vet Diagnosis             -> `vet_verifications` table (Links to report_id)
+- Lab Report                -> `lab_reports` table (Links to report_id)
+- Vaccination Status        -> `vaccination_records` table (Used for `is_vaccinated` feature during retraining and inference)
+- Ground Truth (Dataset)    -> Generated dynamically in `train_worker.py` by performing SQL JOINs across `field_reports`, `vet_verifications`, and `lab_reports`.

@@ -1,9 +1,6 @@
 import os
 import pandas as pd
 import psycopg2
-import os
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import warnings
 import joblib
 from sklearn.model_selection import train_test_split
@@ -12,6 +9,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.preprocessing import MultiLabelBinarizer, LabelEncoder
 from xgboost import XGBClassifier
 
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 warnings.filterwarnings('ignore')
 
 def get_db_connection():
@@ -36,25 +34,53 @@ def train_and_save_model():
     df_diseases = pd.read_sql_query('SELECT * FROM diseases;', conn)
     df_symptoms = pd.read_sql_query('SELECT * FROM symptoms;', conn)
     df_species = pd.read_sql_query('SELECT * FROM species;', conn)
-    
+    # Fetch vaccination data: one row per (animal_tag, disease) where is_current=TRUE
+    df_vacc = pd.read_sql_query(
+        'SELECT animal_tag_id, animal_species, disease_protected_id FROM vaccination_records WHERE is_current = TRUE;',
+        conn
+    )
+    conn.close()
+
     # 2. Join for Ground Truth
     df_dataset = pd.merge(df_field_reports, df_lab_reports[['report_id', 'confirmed_disease_id']], on='report_id', how='left')
     df_vet_subset = df_vet_verifs[['report_id', 'confirmed_disease_id']].rename(columns={'confirmed_disease_id': 'vet_disease_id'})
     df_dataset = pd.merge(df_dataset, df_vet_subset, on='report_id', how='left')
     df_dataset['target_disease_id'] = df_dataset['confirmed_disease_id'].fillna(df_dataset['vet_disease_id'])
-    
+
     # Drop unverified cases
     df_labeled = df_dataset.dropna(subset=['target_disease_id']).copy()
     print(f"Found {len(df_labeled)} verified cases for training.")
-    
+
     # 3. Preprocessing
     mlb = MultiLabelBinarizer()
     symptoms_encoded = mlb.fit_transform(df_labeled['symptom_ids'])
     df_symptoms_features = pd.DataFrame(symptoms_encoded, columns=[f"symp_{c}" for c in mlb.classes_], index=df_labeled.index)
-    
+
     df_species_features = pd.get_dummies(df_labeled['animal_species'], prefix='species', drop_first=True)
-    X = pd.concat([df_symptoms_features, df_species_features], axis=1)
-    
+
+    # --- VACCINATION FEATURE ---
+    # For each field report, check if the reporting animal's species has an active
+    # vaccination against the confirmed disease. This creates a binary feature
+    # that helps the model learn that vaccinated animals presenting with symptoms
+    # are statistically more likely to have a DIFFERENT disease (differential diagnosis).
+    vaccinated_set = set(
+        zip(df_vacc['animal_species'].str.lower(), df_vacc['disease_protected_id'].astype(int))
+    )
+
+    def is_vaccinated(row):
+        """Return 1 if the species has an active vaccination against its confirmed disease."""
+        try:
+            return int((str(row['animal_species']).lower(), int(row['target_disease_id'])) in vaccinated_set)
+        except Exception:
+            return 0
+
+    df_labeled['is_vaccinated'] = df_labeled.apply(is_vaccinated, axis=1)
+    df_vacc_feature = df_labeled[['is_vaccinated']].copy()
+    df_vacc_feature.index = df_labeled.index
+
+    X = pd.concat([df_symptoms_features, df_species_features, df_vacc_feature], axis=1).fillna(0)
+    # ----------------------------
+
     le = LabelEncoder()
     y = le.fit_transform(df_labeled['target_disease_id'].astype(int))
     
