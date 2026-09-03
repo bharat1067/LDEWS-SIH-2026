@@ -17,13 +17,21 @@ import {
   District,
   Village
 } from './models/index.js';
+import multer from 'multer';
 import { predict, predictDistrictRisk } from './services/mlService.js';
+import { healthCheckML, predictImage, detectOutbreaks } from './services/mlClient.js';
 import { processReport, collectSample, notify } from './services/workflowService.js';
 import { seedDatabase } from './seed.js';
 
 const app = express();
 const port = process.env.PORT || 5000;
 const secret = process.env.JWT_SECRET || 'demo-secret-key-sih2026';
+
+// Multer in-memory storage for optional animal photo uploads (5MB max)
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 }
+});
 
 app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173' }));
 app.use(express.json());
@@ -107,6 +115,20 @@ app.get('/api/health', (_, res) => {
   });
 });
 
+app.get('/api/ml/health', async (_, res) => {
+  try {
+    const health = await healthCheckML();
+    res.json(health);
+  } catch (err) {
+    res.json({
+      status: 'offline',
+      fallbackAvailable: true,
+      service: 'fallback',
+      error: err.message
+    });
+  }
+});
+
 // --- Authentication Routes ---
 app.post('/api/auth/login', async (req, res, next) => {
   try {
@@ -171,9 +193,28 @@ app.post('/api/ml/district-risk', auth(), async (req, res, next) => {
 });
 
 // --- Farmer Reporting & Case Access ---
-app.post('/api/reports', auth(['farmer']), async (req, res, next) => {
+app.post('/api/reports', auth(['farmer']), (req, res, next) => {
+  upload.single('photo')(req, res, err => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ message: 'Photo size exceeds the maximum limit of 5MB.' });
+      }
+      return res.status(400).json({ message: `Photo upload error: ${err.message}` });
+    }
+    next();
+  });
+}, async (req, res, next) => {
   try {
-    const { animalType, symptoms, location, district, taluka, village } = req.body;
+    let { animalType, symptoms, location, district, taluka, village } = req.body;
+
+    // Support parsed or stringified inputs from multipart FormData
+    if (typeof symptoms === 'string' && (symptoms.startsWith('[') || symptoms.startsWith('{'))) {
+      try { symptoms = JSON.parse(symptoms); } catch {}
+    }
+    if (typeof location === 'string') {
+      try { location = JSON.parse(location); } catch {}
+    }
+
     if (!animalType) {
       return res.status(400).json({ message: 'Animal type is required' });
     }
@@ -182,11 +223,63 @@ app.post('/api/reports', auth(['farmer']), async (req, res, next) => {
       return res.status(400).json({ message: 'District and village are required' });
     }
 
+    let imageScreening = null;
+    let photoUrl = '';
+
+    // Handle optional animal photo
+    if (req.file) {
+      const mime = req.file.mimetype;
+      if (!['image/jpeg', 'image/png', 'image/jpg'].includes(mime)) {
+        return res.status(400).json({ message: 'Only JPG, JPEG, and PNG images are supported.' });
+      }
+
+      // Perform AI visual screening using FastAPI ResNet18 model
+      try {
+        const imgRes = await predictImage({
+          fileBuffer: req.file.buffer,
+          filename: req.file.originalname,
+          mimetype: mime
+        });
+
+        if (imgRes.success) {
+          imageScreening = {
+            prediction: imgRes.image_prediction,
+            confidence: imgRes.confidence_score,
+            filename: imgRes.filename,
+            source: 'fastapi',
+            screenedAt: new Date()
+          };
+        } else {
+          imageScreening = {
+            prediction: 'Visual Screening Unavailable',
+            confidence: 0,
+            filename: req.file.originalname,
+            source: 'fallback',
+            screenedAt: new Date(),
+            error: imgRes.error
+          };
+        }
+      } catch (imgErr) {
+        imageScreening = {
+          prediction: 'Visual Screening Unavailable',
+          confidence: 0,
+          filename: req.file.originalname,
+          source: 'fallback',
+          screenedAt: new Date()
+        };
+      }
+
+      photoUrl = `data:${mime};base64,${req.file.buffer.toString('base64').slice(0, 120)}...`;
+    }
+
     const farmer = await User.findById(req.user.id);
     const data = await processReport({
       ...req.body,
+      symptoms,
       location: loc,
-      source: req.body.source || 'web'
+      source: req.body.source || 'web',
+      imageScreening,
+      photoUrl
     }, farmer);
 
     res.status(201).json({
@@ -501,23 +594,80 @@ async function districtStats(district) {
   const stageSummary = Object.fromEntries(stageList.map(s => [s, reports.filter(x => x.status === s).length]));
 
   const minCases = Number(process.env.CLUSTER_MIN_CASES || 2);
-  const clusterMap = active.reduce((acc, c) => {
-    const key = `${c.location.village}|${c.suspectedDisease}`;
-    acc[key] = acc[key] || {
-      village: c.location.village,
-      taluka: c.location.taluka || '',
-      disease: c.suspectedDisease,
-      caseCount: 0,
-      risk: 0,
-      caseIds: []
-    };
-    acc[key].caseCount += 1;
-    acc[key].risk = Math.max(acc[key].risk, c.localOutbreakRisk);
-    acc[key].caseIds.push(c.caseId);
-    return acc;
-  }, {});
 
-  const clusters = Object.values(clusterMap).filter(x => x.caseCount >= minCases);
+  // Attempt real spatial clustering via FastAPI DBSCAN endpoint
+  let clusters = [];
+  const validCoordCases = active.filter(
+    c => typeof c.location?.latitude === 'number' && typeof c.location?.longitude === 'number'
+  );
+
+  if (validCoordCases.length >= minCases) {
+    const numToCase = new Map();
+    const casesCoords = validCoordCases.map((c, idx) => {
+      const numId = idx + 1;
+      numToCase.set(numId, c);
+      return {
+        report_id: numId,
+        latitude: c.location.latitude,
+        longitude: c.location.longitude
+      };
+    });
+
+    try {
+      const dbscanRes = await detectOutbreaks({
+        radiusKm: 15.0,
+        minCases,
+        cases: casesCoords
+      });
+
+      if (dbscanRes.success && dbscanRes.outbreaks && dbscanRes.outbreaks.length > 0) {
+        clusters = dbscanRes.outbreaks.map(ob => {
+          const casesInCluster = ob.affected_report_ids.map(id => numToCase.get(id)).filter(Boolean);
+          const first = casesInCluster[0];
+          const maxRisk = Math.max(...casesInCluster.map(c => c.localOutbreakRisk || 0), 0);
+          return {
+            clusterId: ob.cluster_id,
+            centroid: {
+              latitude: ob.centroid_latitude,
+              longitude: ob.centroid_longitude
+            },
+            radiusKm: 15,
+            caseCount: ob.sumCases,
+            caseIds: casesInCluster.map(c => c.caseId),
+            village: first?.location?.village || `Cluster-${ob.cluster_id + 1}`,
+            taluka: first?.location?.taluka || '',
+            disease: first?.suspectedDisease || 'Livestock Outbreak',
+            risk: maxRisk,
+            source: 'dbscan'
+          };
+        });
+      }
+    } catch {
+      // Graceful fallback to village-density grouping
+    }
+  }
+
+  // Fallback to village-density grouping if DBSCAN returned no clusters or was unavailable
+  if (!clusters.length) {
+    const clusterMap = active.reduce((acc, c) => {
+      const key = `${c.location.village}|${c.suspectedDisease}`;
+      acc[key] = acc[key] || {
+        clusterId: Object.keys(acc).length,
+        village: c.location.village,
+        taluka: c.location.taluka || '',
+        disease: c.suspectedDisease,
+        caseCount: 0,
+        risk: 0,
+        caseIds: [],
+        source: 'fallback'
+      };
+      acc[key].caseCount += 1;
+      acc[key].risk = Math.max(acc[key].risk, c.localOutbreakRisk);
+      acc[key].caseIds.push(c.caseId);
+      return acc;
+    }, {});
+    clusters = Object.values(clusterMap).filter(x => x.caseCount >= minCases);
+  }
 
   const mapData = active.map(c => ({
     caseId: c.caseId,

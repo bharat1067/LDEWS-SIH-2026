@@ -9,13 +9,25 @@ import {
   Sample
 } from '../models/index.js';
 import { predict } from './mlService.js';
+import { predictSymptoms } from './mlClient.js';
+import { normalizeSpecies, mapSymptomsToIds, mapDiseaseIdToName } from './mlMappingService.js';
 
 // Single backend-controlled escalation decision
 export const getRiskThreshold = () => Number(process.env.RISK_THRESHOLD || 70);
 
 const advice = {
   'Foot and Mouth Disease': 'Isolate affected animals, avoid animal movement, disinfect sheds, and await veterinary guidance.',
-  'Lumpy Skin Disease': 'Isolate affected animals, control insects, provide fluids and contact the veterinary officer.',
+  'Lumpy Skin Disease': 'Isolate affected animals, control insects and vectors, provide fluids, and contact veterinary officer.',
+  'African Swine Fever': 'Strict quarantine of pig pens, restrict farm visitors, and alert veterinary authorities immediately.',
+  'Anthrax': 'Do not move or open carcass if death occurs, isolate herd, and notify veterinary authority urgently.',
+  'Avian Influenza': 'Quarantine flock, prevent wild bird contact, wear protective gear, and report to veterinary dispensary.',
+  'Babesiosis': 'Apply anti-tick treatments to livestock, isolate febrile animals, and seek veterinary administration of antiparasitics.',
+  'Black Quarter': 'Isolate animal, administer prescribed antibiotics promptly under veterinary supervision, and vaccinate herd.',
+  'Bluetongue': 'Protect ruminants from midge vectors using netting and repellents, provide shade and soft fodder.',
+  'Trypanosomosis': 'Control biting fly population, isolate weak livestock, and consult veterinarian for trypanocidal treatment.',
+  'Swine Fever': 'Isolate sick pigs immediately, disinfect pens, and observe biosecurity protocols.',
+  'Fasciolosis': 'Keep animals away from snail-infested stagnant water bodies and treat with recommended flukicides.',
+  'Sheep and Goat Pox': 'Isolate affected sheep/goats, treat skin lesions, and restrict flock movement.',
   'PPR': 'Separate sick goats/sheep, avoid animal movement and maintain clean feed and water.',
   'Hemorrhagic Septicemia': 'Isolate animal immediately, prevent exposure to cold/damp areas, and contact veterinarian urgently.'
 };
@@ -65,15 +77,63 @@ export async function processReport(payload, farmer = null) {
 
   const district = await District.findOne({ name: loc.district });
 
-  // Call mock ML predict adapter
-  const result = await predict({
-    symptoms: payload.symptoms,
-    animalType: payload.animalType,
-    location: loc,
-    recentLocalReports: recent,
-    districtRisk: district?.riskScore || 0,
-    context: payload.context
-  });
+  // 1. Normalize species and symptoms for ML microservice
+  const normSpecies = normalizeSpecies(payload.animalType);
+  const symptomIds = mapSymptomsToIds(payload.symptoms);
+
+  // 2. Attempt Real ML Prediction via FastAPI
+  let result = null;
+  const mlAttempt = await predictSymptoms({ species: normSpecies, symptoms: symptomIds });
+
+  if (mlAttempt.success) {
+    const disName = mapDiseaseIdToName(mlAttempt.predicted_disease_id);
+    const conf = mlAttempt.confidence_score;
+    const reqVet = Boolean(mlAttempt.requires_vet_review);
+
+    // Calculate risk score based on confidence and local density
+    const base = conf >= 0.8 ? 65 : (conf >= 0.6 ? 50 : 35);
+    const localOutbreakRisk = Math.min(95, Math.max(15, base + recent * 7 + Math.round((district?.riskScore || 0) * 0.12)));
+    const triage = (localOutbreakRisk >= 70 || reqVet || conf < 0.6) ? 'high' : (localOutbreakRisk >= 45 ? 'medium' : 'low');
+
+    result = {
+      suspectedDisease: disName,
+      triage,
+      localOutbreakRisk,
+      requiresVetReview: reqVet,
+      mlSource: 'fastapi',
+      mlPrediction: {
+        diseaseId: mlAttempt.predicted_disease_id,
+        diseaseName: disName,
+        confidence: conf,
+        requiresVetReview: reqVet,
+        modelSource: 'fastapi',
+        predictedAt: new Date()
+      }
+    };
+  } else {
+    // 3. Transparent Fallback to existing heuristic ML logic
+    const fallbackRes = await predict({
+      symptoms: payload.symptoms,
+      animalType: payload.animalType,
+      location: loc,
+      recentLocalReports: recent,
+      districtRisk: district?.riskScore || 0,
+      context: payload.context
+    });
+
+    result = {
+      ...fallbackRes,
+      requiresVetReview: fallbackRes.triage === 'high',
+      mlSource: 'fallback',
+      mlPrediction: {
+        diseaseName: fallbackRes.suspectedDisease,
+        confidence: fallbackRes.triage === 'high' ? 0.75 : 0.60,
+        requiresVetReview: fallbackRes.triage === 'high',
+        modelSource: 'fallback',
+        predictedAt: new Date()
+      }
+    };
+  }
 
   // Single backend-controlled escalation evaluation:
   // RISK >= 70 -> escalate
@@ -94,7 +154,11 @@ export async function processReport(payload, farmer = null) {
     suspectedDisease: result.suspectedDisease,
     triage: result.triage,
     localOutbreakRisk: result.localOutbreakRisk,
-    status
+    status,
+    mlPrediction: result.mlPrediction,
+    mlSource: result.mlSource,
+    imageScreening: payload.imageScreening || null,
+    photoUrl: payload.photoUrl || ''
   });
 
   // Generate automated advisory

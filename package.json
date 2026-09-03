@@ -1,6 +1,15 @@
 {
   "name": "livestock-disease-early-warning-system",
   "private": true,
-  "scripts": { "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"", "seed": "npm run seed --prefix backend" },
-  "devDependencies": { "concurrently": "^9.1.2" }
+  "scripts": {
+    "dev": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "dev:backend": "npm run dev --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "dev:ml": "python -m uvicorn src.api:app --reload --port 8000 --app-dir ml-service",
+    "dev:all": "concurrently \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\" \"npm run dev:ml\"",
+    "seed": "npm run seed --prefix backend"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
 }

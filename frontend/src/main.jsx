@@ -23,7 +23,8 @@ import {
   Send,
   Building2,
   Calendar,
-  X
+  X,
+  Activity
 } from 'lucide-react';
 import './styles.css';
 
@@ -33,12 +34,15 @@ export const useAuth = () => useContext(Auth);
 
 export const api = async (path, o = {}) => {
   const s = JSON.parse(localStorage.getItem('ldews-session') || 'null');
+  const isFormData = typeof FormData !== 'undefined' && o.body instanceof FormData;
+  const headers = {
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...(s?.token ? { Authorization: `Bearer ${s.token}` } : {}),
+    ...(o.headers || {})
+  };
   const r = await fetch(API + path, {
-    headers: {
-      'Content-Type': 'application/json',
-      ...(s?.token ? { Authorization: `Bearer ${s.token}` } : {})
-    },
-    ...o
+    ...o,
+    headers
   });
   const d = await r.json().catch(() => ({}));
   if (r.status === 401) {
@@ -512,6 +516,9 @@ function Report() {
     village: 'Pimpalgaon',
     source: 'web'
   });
+  const [photo, setPhoto] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoError, setPhotoError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submittedCase, setSubmittedCase] = useState(null);
   const [err, setErr] = useState('');
@@ -533,6 +540,26 @@ function Report() {
     }
   };
 
+  const handlePhotoChange = (e) => {
+    const file = e.target.files?.[0];
+    setPhotoError('');
+    if (!file) {
+      setPhoto(null);
+      setPhotoPreview(null);
+      return;
+    }
+    if (!['image/jpeg', 'image/png', 'image/jpg'].includes(file.type)) {
+      setPhotoError('Only JPG, JPEG, and PNG images are supported.');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setPhotoError('Photo size exceeds 5MB limit.');
+      return;
+    }
+    setPhoto(file);
+    setPhotoPreview(URL.createObjectURL(file));
+  };
+
   const submit = async (e, iv = false) => {
     e.preventDefault();
     setErr('');
@@ -543,24 +570,42 @@ function Report() {
         .map(x => x.trim())
         .filter(Boolean);
 
-      const payload = iv
-        ? {
-            ...f,
-            symptoms: parsed,
-            farmerName: user.name,
-            phone: user.phone || '9876543210',
-            language: 'Hindi'
-          }
-        : {
-            ...f,
-            symptoms: parsed,
-            location: { district: f.district, taluka: f.taluka, village: f.village }
-          };
+      let res;
+      if (photo && !iv) {
+        // Send multipart form-data for photo screening
+        const formData = new FormData();
+        formData.append('animalType', f.animalType);
+        formData.append('symptoms', JSON.stringify(parsed));
+        formData.append('district', f.district);
+        formData.append('taluka', f.taluka);
+        formData.append('village', f.village);
+        formData.append('source', f.source || 'web');
+        formData.append('photo', photo);
 
-      const res = await api(iv ? '/ivr/report' : '/reports', {
-        method: 'POST',
-        body: JSON.stringify(payload)
-      });
+        res = await api('/reports', {
+          method: 'POST',
+          body: formData
+        });
+      } else {
+        const payload = iv
+          ? {
+              ...f,
+              symptoms: parsed,
+              farmerName: user.name,
+              phone: user.phone || '9876543210',
+              language: 'Hindi'
+            }
+          : {
+              ...f,
+              symptoms: parsed,
+              location: { district: f.district, taluka: f.taluka, village: f.village }
+            };
+
+        res = await api(iv ? '/ivr/report' : '/reports', {
+          method: 'POST',
+          body: JSON.stringify(payload)
+        });
+      }
 
       setSubmittedCase(res);
     } catch (x) {
@@ -601,6 +646,67 @@ function Report() {
               </div>
             </div>
           </div>
+
+          {/* AUTOMATED SYMPTOM ANALYSIS */}
+          <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '4px', marginBottom: '18px', border: '1px solid #d9e2ec' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
+              <h3 style={{ fontSize: '13px', margin: 0, color: '#062b51', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Automated Symptom Analysis
+              </h3>
+              <span className={`badge ${submittedCase.case?.mlSource === 'fastapi' ? 'green' : 'amber'}`}>
+                {submittedCase.case?.mlSource === 'fastapi' ? 'FastAPI Voting Ensemble' : 'Fallback Assessment'}
+              </span>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', fontSize: '13px' }}>
+              <div>
+                <small style={{ color: '#627d98', display: 'block' }}>Predicted Condition</small>
+                <strong style={{ color: '#0b4f8a' }}>{submittedCase.case?.suspectedDisease}</strong>
+              </div>
+              <div>
+                <small style={{ color: '#627d98', display: 'block' }}>Confidence Score</small>
+                <strong>
+                  {submittedCase.case?.mlPrediction?.confidence
+                    ? `${(submittedCase.case.mlPrediction.confidence * 100).toFixed(1)}%`
+                    : `${submittedCase.case?.localOutbreakRisk}%`}
+                </strong>
+              </div>
+              <div>
+                <small style={{ color: '#627d98', display: 'block' }}>Model Source</small>
+                <span>
+                  {submittedCase.case?.mlSource === 'fastapi' ? 'FastAPI Voting Ensemble' : 'Fallback Assessment'}
+                </span>
+              </div>
+            </div>
+            <div style={{ fontSize: '11px', color: '#627d98', marginTop: '10px', fontStyle: 'italic' }}>
+              AI screening provides preliminary risk assessment and does not replace veterinary diagnosis.
+            </div>
+          </div>
+
+          {/* AI VISUAL SCREENING (IF PHOTO WAS PROCESSED) */}
+          {submittedCase.case?.imageScreening && (
+            <div style={{ background: '#f0f9ff', border: '1px solid #b9e6fe', padding: '16px', borderRadius: '4px', marginBottom: '18px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #d0ecfd', paddingBottom: '8px' }}>
+                <h3 style={{ fontSize: '13px', margin: 0, color: '#026aa2', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                  AI Visual Screening — Lumpy Skin Disease Detection
+                </h3>
+                <span className="badge blue">ResNet18 CNN</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '12px', fontSize: '13px' }}>
+                <div>
+                  <small style={{ color: '#026aa2', display: 'block' }}>Visual Classification</small>
+                  <strong style={{ color: '#0b4f8a', fontSize: '14px' }}>{submittedCase.case.imageScreening.prediction}</strong>
+                </div>
+                <div>
+                  <small style={{ color: '#026aa2', display: 'block' }}>Visual Confidence</small>
+                  <strong>{(submittedCase.case.imageScreening.confidence * 100).toFixed(1)}%</strong>
+                </div>
+              </div>
+              <div style={{ fontSize: '11px', color: '#026aa2', marginTop: '10px', fontStyle: 'italic' }}>
+                Disclaimer: AI visual screening is a preliminary screening tool and does not replace clinical veterinary diagnosis.
+              </div>
+            </div>
+          )}
 
           <div className="notice" style={{ background: '#eff8ff', marginBottom: '18px' }}>
             <b>Immediate Precautionary Advisory:</b>
@@ -696,6 +802,35 @@ function Report() {
                   </button>
                 ))}
               </div>
+            </div>
+
+            {/* Optional Animal Photo Upload */}
+            <div style={{ marginTop: '16px', borderTop: '1px dashed #d9e2ec', paddingTop: '14px' }}>
+              <label style={{ fontWeight: 600, fontSize: '13px' }}>
+                Upload Animal Photo (Optional)
+                <span className="hint" style={{ display: 'block', fontWeight: 'normal', marginTop: '3px' }}>
+                  Provide an optional photo for AI visual screening (e.g. skin nodules or lesions for Lumpy Skin Disease detection). Supported: JPG, JPEG, PNG (Max 5MB).
+                </span>
+                <input
+                  type="file"
+                  accept="image/jpeg,image/png,image/jpg"
+                  onChange={handlePhotoChange}
+                  style={{ marginTop: '8px' }}
+                />
+              </label>
+              {photoError && <small style={{ color: '#b42318', display: 'block', marginTop: '4px' }}>{photoError}</small>}
+              {photoPreview && (
+                <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '12px', background: '#f8fafc', padding: '8px 12px', borderRadius: '4px', border: '1px solid #d9e2ec' }}>
+                  <img src={photoPreview} alt="Selected livestock preview" style={{ width: '64px', height: '64px', objectFit: 'cover', borderRadius: '4px', border: '1px solid #cbd5e1' }} />
+                  <div style={{ flex: 1 }}>
+                    <small style={{ color: '#102a43', display: 'block', fontWeight: 600 }}>{photo?.name}</small>
+                    <small style={{ color: '#627d98' }}>{photo?.size ? (photo.size / 1024).toFixed(1) + ' KB' : ''}</small>
+                    <button type="button" className="link" onClick={() => { setPhoto(null); setPhotoPreview(null); }} style={{ display: 'block', padding: 0, fontSize: '11px', color: '#b42318', marginTop: '2px' }}>
+                      Remove photo
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div style={{ marginTop: '24px' }}>
@@ -896,14 +1031,64 @@ function VetCase() {
 
             <div className="two-col">
               <div>
-                {/* Notice distinguishing ML triage from clinical diagnosis */}
-                <div className="notice" style={{ background: '#fffaeb', borderColor: '#ff9933' }}>
-                  <b style={{ color: '#b54708' }}>Automated Preliminary Screening Notice:</b>
-                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#7a271a' }}>
-                    Suspected Condition: <strong>{c.suspectedDisease}</strong> · Local Outbreak Risk: <strong>{c.localOutbreakRisk}%</strong>.<br />
-                    This is an algorithmic triage signal to prioritize veterinary visits. It does not replace clinical field examination or laboratory confirmation.
-                  </p>
-                </div>
+                {/* INITIAL AI TRIAGE & PRELIMINARY SCREENING */}
+                <section className="panel" style={{ borderTop: '3px solid #ff9933', marginBottom: '16px' }}>
+                  <div className="panel-title">
+                    <h2>
+                      <Activity size={18} color="#b54708" />
+                      Initial AI Triage & Preliminary Screening
+                    </h2>
+                    <span className={`badge ${c.mlSource === 'fastapi' ? 'green' : 'amber'}`}>
+                      {c.mlSource === 'fastapi' ? 'FastAPI Voting Ensemble' : 'Fallback Model'}
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', fontSize: '13px', background: '#f8fafc', padding: '12px', borderRadius: '4px', border: '1px solid #d9e2ec' }}>
+                    <div>
+                      <small style={{ color: '#627d98', display: 'block' }}>Predicted Condition</small>
+                      <strong style={{ color: '#0b4f8a', fontSize: '14px' }}>{c.suspectedDisease}</strong>
+                    </div>
+                    <div>
+                      <small style={{ color: '#627d98', display: 'block' }}>Confidence / Risk</small>
+                      <strong>
+                        {c.mlPrediction?.confidence
+                          ? `${(c.mlPrediction.confidence * 100).toFixed(1)}% (${c.localOutbreakRisk}% Risk)`
+                          : `${c.localOutbreakRisk}% Risk`}
+                      </strong>
+                    </div>
+                    <div>
+                      <small style={{ color: '#627d98', display: 'block' }}>Symptom Model Source</small>
+                      <span>{c.mlSource === 'fastapi' ? 'FastAPI Voting Ensemble' : 'Fallback Heuristic'}</span>
+                    </div>
+                  </div>
+
+                  {/* Image screening result if available */}
+                  {c.imageScreening && (
+                    <div style={{ marginTop: '10px', padding: '10px 12px', background: '#f0f9ff', border: '1px solid #b9e6fe', borderRadius: '4px', fontSize: '12px' }}>
+                      <b style={{ color: '#026aa2' }}>AI Visual Screening (ResNet18 CNN):</b>
+                      <div style={{ marginTop: '4px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                        <span>Classification: <strong>{c.imageScreening.prediction}</strong></span>
+                        <span>Confidence: <strong>{(c.imageScreening.confidence * 100).toFixed(1)}%</strong></span>
+                        <span>Source: <strong>{c.imageScreening.source === 'fastapi' ? 'FastAPI Microservice' : 'Offline Fallback'}</strong></span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '12px' }}>
+                    <div>
+                      <span style={{ color: '#627d98' }}>AI Recommendation: </span>
+                      <strong style={{ color: c.localOutbreakRisk >= 70 || c.mlPrediction?.requiresVetReview ? '#b42318' : '#0b4f8a' }}>
+                        {c.localOutbreakRisk >= 70 || c.mlPrediction?.requiresVetReview
+                          ? 'Requires Immediate Physical Field Verification'
+                          : 'Standard Clinical Observation Protocol'}
+                      </strong>
+                    </div>
+                  </div>
+
+                  <div className="notice" style={{ background: '#fffaeb', borderColor: '#fedf89', marginTop: '12px', fontSize: '11px', color: '#7a271a' }}>
+                    <b>Clinical Authority Disclaimer:</b> AI triage provides preliminary screening based on reported symptoms. Field physical examination and laboratory confirmation by the licensed veterinary officer determine the final diagnosis.
+                  </div>
+                </section>
 
                 <section className="panel">
                   <div className="panel-title">
@@ -1274,14 +1459,24 @@ function DistrictHome() {
               </div>
             </section>
 
-            {/* ACTIVE CLUSTERS */}
+            {/* ACTIVE OUTBREAK CLUSTER DETECTION */}
             <section className="panel" style={{ borderTop: '3px solid #b42318' }}>
               <div className="panel-title">
-                <h2>
-                  <AlertTriangle size={18} color="#b42318" />
-                  Active Cluster Early Warning Signals
-                </h2>
-                <Badge>THRESHOLD: ≥2 CONNECTED CASES</Badge>
+                <div>
+                  <h2 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <AlertTriangle size={18} color="#b42318" />
+                    Active Outbreak Cluster Detection
+                  </h2>
+                  <small style={{ color: '#627d98', display: 'block', marginTop: '2px' }}>
+                    Powered by Spatial Analysis ({d.clusters?.some(c => c.source === 'dbscan') ? 'DBSCAN Machine Learning' : 'Density Assessment'})
+                  </small>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                  <span className={`badge ${d.clusters?.some(c => c.source === 'dbscan') ? 'green' : 'amber'}`}>
+                    {d.clusters?.some(c => c.source === 'dbscan') ? 'DBSCAN Active' : 'Fallback Density'}
+                  </span>
+                  <Badge>RADIUS: 15 KM</Badge>
+                </div>
               </div>
 
               {d.clusters && d.clusters.length > 0 ? (
@@ -1289,19 +1484,41 @@ function DistrictHome() {
                   <table>
                     <thead>
                       <tr>
+                        <th>Cluster ID & Source</th>
                         <th>Village & Taluka</th>
-                        <th>Suspected / Confirmed Pathogen</th>
-                        <th>Linked Cases</th>
-                        <th>Peak Operational Risk</th>
+                        <th>Pathogen & Centroid</th>
+                        <th>Linked Case IDs</th>
+                        <th>Peak Risk</th>
                         <th>Recommended Action</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {d.clusters.map(x => (
-                        <tr key={x.village + x.disease} style={{ background: '#fffbfa' }}>
-                          <td><b>{x.village}</b> <small>{x.taluka || districtName}</small></td>
-                          <td><strong>{x.disease}</strong></td>
-                          <td><span style={{ fontSize: '15px', fontWeight: 800 }}>{x.caseCount}</span> active cases</td>
+                      {d.clusters.map((x, idx) => (
+                        <tr key={x.village + x.disease + idx} style={{ background: '#fffbfa' }}>
+                          <td>
+                            <b style={{ color: '#062b51' }}>Cluster #{x.clusterId ?? idx}</b>
+                            <small style={{ display: 'block', marginTop: '2px' }}>
+                              <span className={`badge ${x.source === 'dbscan' ? 'green' : 'amber'}`} style={{ fontSize: '10px', padding: '1px 6px' }}>
+                                {x.source === 'dbscan' ? 'DBSCAN' : 'Fallback'}
+                              </span>
+                            </small>
+                          </td>
+                          <td>
+                            <b>{x.village}</b>
+                            <small style={{ display: 'block' }}>{x.taluka || districtName} (15 km radius)</small>
+                          </td>
+                          <td>
+                            <strong>{x.disease}</strong>
+                            <small style={{ display: 'block', color: '#627d98' }}>
+                              {x.centroid?.latitude ? `${x.centroid.latitude.toFixed(4)}, ${x.centroid.longitude.toFixed(4)}` : 'Centroid calculated'}
+                            </small>
+                          </td>
+                          <td>
+                            <span style={{ fontSize: '14px', fontWeight: 800 }}>{x.caseCount}</span> active cases
+                            <small style={{ display: 'block', color: '#486581', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {x.caseIds?.join(', ') || 'Connected cluster'}
+                            </small>
+                          </td>
                           <td><span className="risk-pill high">{x.risk}%</span></td>
                           <td>
                             <button className="primary" style={{ padding: '5px 10px', fontSize: '11px', background: '#b42318', borderColor: '#b42318' }} onClick={() => setModalOpen(true)}>
@@ -1485,7 +1702,7 @@ function Clusters() {
   const { user } = useAuth();
   const { d, e } = useLoad('/district/' + (user.district || 'Nashik') + '/clusters');
   return (
-    <Page title="Active Cluster Warnings" subtitle="Early warning triggers generated by spatial-temporal disease density">
+    <Page title="Active Outbreak Cluster Warnings" subtitle="Early warning triggers generated by spatial-temporal disease density and DBSCAN spatial analysis">
       <section className="panel">
         <Load error={e}>
           {d && d.length ? (
@@ -1493,21 +1710,38 @@ function Clusters() {
               <table>
                 <thead>
                   <tr>
+                    <th>Cluster ID</th>
                     <th>Cluster Location</th>
-                    <th>Disease</th>
+                    <th>Suspected Condition</th>
+                    <th>Spatial Centroid</th>
                     <th>Linked Active Cases</th>
-                    <th>Peak Risk Score</th>
-                    <th>Severity Indicator</th>
+                    <th>Peak Risk</th>
+                    <th>Analysis Engine</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {d.map(x => (
-                    <tr key={x.village + x.disease}>
+                  {d.map((x, idx) => (
+                    <tr key={x.village + x.disease + idx}>
+                      <td><b style={{ color: '#062b51' }}>Cluster #{x.clusterId ?? idx}</b></td>
                       <td><b>{x.village}</b> <small>{x.taluka || user.district}</small></td>
                       <td><strong>{x.disease}</strong></td>
-                      <td>{x.caseCount} reports</td>
+                      <td>
+                        <small style={{ color: '#486581' }}>
+                          {x.centroid?.latitude ? `${x.centroid.latitude.toFixed(4)}, ${x.centroid.longitude.toFixed(4)}` : 'Calculated'}
+                        </small>
+                      </td>
+                      <td>
+                        <span style={{ fontWeight: 700 }}>{x.caseCount}</span> cases
+                        <small style={{ display: 'block', color: '#627d98', maxWidth: '180px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {x.caseIds?.join(', ') || 'Linked'}
+                        </small>
+                      </td>
                       <td><span className="risk-pill high">{x.risk}%</span></td>
-                      <td><Badge>URGENT RESPONSE</Badge></td>
+                      <td>
+                        <span className={`badge ${x.source === 'dbscan' ? 'green' : 'amber'}`}>
+                          {x.source === 'dbscan' ? 'DBSCAN ML' : 'Density Fallback'}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

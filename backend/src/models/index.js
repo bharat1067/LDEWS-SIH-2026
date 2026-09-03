@@ -78,7 +78,24 @@ export const FarmerReport = model('FarmerReport', new Schema({
     index: true
   },
   clinicalObservations: { type: String },
-  advisory: ref('Advisory')
+  advisory: ref('Advisory'),
+  mlPrediction: {
+    diseaseId: { type: Number },
+    diseaseName: { type: String },
+    confidence: { type: Number },
+    requiresVetReview: { type: Boolean },
+    modelSource: { type: String, enum: ['fastapi', 'fallback'] },
+    predictedAt: { type: Date }
+  },
+  mlSource: { type: String, enum: ['fastapi', 'fallback'], default: 'fallback' },
+  imageScreening: {
+    prediction: { type: String },
+    confidence: { type: Number },
+    filename: { type: String },
+    source: { type: String, default: 'fastapi' },
+    screenedAt: { type: Date }
+  },
+  photoUrl: { type: String }
 }, { timestamps: true }));
 
 export const Advisory = model('Advisory', new Schema({

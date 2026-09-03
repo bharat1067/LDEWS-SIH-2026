@@ -1,0 +1,69 @@
+                            ┌─────────────────────┐
+                            │    FIELD WORKER     │
+                            └──────────┬──────────┘
+                                       │
+                              SYMPTOMS + PHOTO + GPS
+                                       │
+                                       ▼
+                    ┌──────────────────────────────────────┐
+                    │            INFERENCE NODE            │
+                    │   (FastAPI Microservice + Node.js)   │
+                    └─┬────────────────┬─────────────────┬─┘
+                      │                │                 │
+             ┌────────▼───────┐ ┌──────▼───────┐ ┌───────▼────────┐
+             │   SYMPTOM ML   │ │   IMAGE ML   │ │SPATIAL OUTBREAK│
+             │   (Tabular)    │ │(CNN ResNet18)│ │  CLUSTERING    │
+             └────────┬───────┘ └──────┬───────┘ │    (DBSCAN)    │
+                      │                │         └───────┬────────┘
+                      └───────┬────────┘                 │
+                              ▼                          ▼
+                     ┌─────────────────┐        ┌──────────────────┐
+                     │ PREDICTION CONF │        │  HOTSPOT ALERTS  │
+                     │  (Multimodal)   │        └──────────────────┘
+                     └────────┬────────┘                
+                              │
+             ┌────────────────┴────────────────┐
+             ▼                                 ▼
+      HIGH CONFIDENCE                  LOW CONF / HIGH RISK
+             │                                 │
+             ▼                                 ▼
+      ┌───────────────┐                ┌───────────────┐
+      │ AUTO-ADVISORY │                │ VET DIAGNOSIS │
+      └───────────────┘                └───────┬───────┘
+                                               │
+                                               ▼
+                                      ┌─────────────────┐
+                                      │   LAB REPORT    │
+                                      │(Final Verifier) │
+                                      └────────┬────────┘
+                                               │
+                                               ▼
+                                      ┌─────────────────┐
+                                      │  GROUND TRUTH   │
+                                      └────────┬────────┘
+                                               │
+                                               ▼
+                                      ┌─────────────────┐
+                                      │ DATASET MANAGER │
+                                      │ (Train/Val/Test)│
+                                      └────────┬────────┘
+                                               │
+                                               ▼
+                                      ┌─────────────────┐
+                                      │ MODEL RETRAINING│ (train_worker.py & train_image_worker.py)
+                                      └────────┬────────┘
+                                               │
+                                               ▼
+                                      ┌─────────────────┐
+                                      │ MODEL REGISTRY  │ (model_registry/)
+                                      │(Version Control)│
+                                      └────────┬────────┘
+                                               │
+                                               └────────► (Deploys to INFERENCE NODE)
+
+--------------------------------------------------------------------------------
+RULES FOR UPDATING TRAINING:
+1. Data Accumulation: Trigger retraining when a specific threshold of new ground truth samples (verified by lab reports) is collected.
+2. Data Quality: Only incorporate data into the training set if it has been verified by a Lab Report (or high-confidence Vet Diagnosis if lab is unavailable).
+3. Performance Drift: Retrain if model confidence or real-world accuracy drops below acceptable thresholds on recent data.
+4. Periodic Updates: Run scheduled retraining cycles (e.g., monthly/quarterly) incorporating all new verified data.

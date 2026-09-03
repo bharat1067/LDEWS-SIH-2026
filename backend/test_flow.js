@@ -42,6 +42,7 @@ async function runTests() {
   console.log('1. Database Connection & Environment Configuration:');
   const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/ldews';
   let isMemory = false;
+  let mongodInstance = null;
 
   try {
     await mongoose.connect(mongoUri, { serverSelectionTimeoutMS: 2500 });
@@ -49,8 +50,8 @@ async function runTests() {
   } catch (err) {
     console.log(`  Local MongoDB unavailable (${err.message}). Starting embedded memory MongoDB...`);
     const { MongoMemoryServer } = await import('mongodb-memory-server');
-    const mongod = await MongoMemoryServer.create({ instance: { dbName: 'ldews' } });
-    const memUri = mongod.getUri();
+    mongodInstance = await MongoMemoryServer.create({ instance: { dbName: 'ldews' } });
+    const memUri = mongodInstance.getUri();
     await mongoose.connect(memUri);
     isMemory = true;
     console.log(`  Embedded MongoDB connected at ${memUri}`);
@@ -303,6 +304,9 @@ async function runTests() {
   console.log('==================================================\n');
 
   await mongoose.disconnect();
+  if (mongodInstance) {
+    await mongodInstance.stop();
+  }
   process.exit(failed > 0 ? 1 : 0);
 }
 
