@@ -1,0 +1,328 @@
+================================================================================
+   COMPLETE SYSTEM DATA FLOW ARCHITECTURE
+   Livestock Disease Detection & Outbreak Management Platform
+================================================================================
+
+LEGEND:
+  [SQL]       = PostgreSQL Table
+  [FILE]      = Source Code File (Python)
+  [API]       = FastAPI Endpoint
+  [ML]        = Machine Learning Model / Artifact
+  [MERN]      = Node.js / React Layer
+  ✅ DONE     = Already fully implemented in current codebase
+  🔲 TODO     = Needs to be built in the MERN stack
+
+================================================================================
+SECTION 1: INFERENCE FLOW (Real-Time Prediction)
+================================================================================
+
+Field Worker (Mobile App / React Frontend)
+   │
+   │  User selects: Species + Symptoms (Checkbox IDs) + Uploads Photo + GPS
+   │
+   ▼
+[MERN] React Frontend                                      🔲 TODO (Build React UI)
+   │  Sends two parallel HTTP requests to FastAPI:
+   │
+   ├────────────────────────────────────────────┐
+   │                                            │
+   ▼                                            ▼
+[API]  POST /predict              ✅ DONE  [API]  POST /predict-image    ✅ DONE
+[FILE] src/api.py                         [FILE] src/api.py
+   │                                            │
+   │  Input JSON:                               │  Input: Multipart image file
+   │  { "species": "Cow",                       │
+   │    "symptoms": [1, 5, 12],                 │
+   │    "is_vaccinated": false }                │
+   │                                            │
+   ▼                                            ▼
+[ML] symptom_ensemble_v1.joblib           [ML] lumpy_cnn_v1.pth
+     (VotingClassifier: RF+GB+LR+XGB)          (ResNet18 - PyTorch)
+[ML] symptom_binarizer.joblib             [ML] lumpy_class_names.joblib
+[ML] disease_label_encoder.joblib
+[ML] model_columns.joblib
+   │                                            │
+   │  Output JSON:                              │  Output JSON:
+   │  {                                         │  {
+   │   "predicted_disease_id": 3,               │   "image_prediction": "Lumpy Skin",
+   │   "confidence_score": 0.89,                │   "confidence_score": 0.965,
+   │   "requires_vet_review": false             │   "filename": "cow_photo.jpg"
+   │  }                                         │  }
+   │                                            │
+   └───────────────────┬────────────────────────┘
+                       │  Both responses combined
+                       ▼
+             [MERN] Node.js Backend (Escalation Engine)    🔲 TODO (Build Node.js)
+                       │
+                       │  STEP 1: Save initial report:
+                       ├───────────────────────────────────────────────────────►
+                       │                                              [SQL] field_reports  ✅ DONE
+                       │                                              Columns: report_id,
+                       │                                              farmer_id,
+                       │                                              animal_species,
+                       │                                              symptom_ids[],
+                       │                                              latitude,
+                       │                                              longitude,
+                       │                                              photo_url,
+                       │                                              reported_at
+                       │
+                       │  STEP 2: Send GPS coords to outbreak detector:
+                       ├──────────────────────────────────┐
+                       │                                  ▼
+                       │                          [API]  POST /detect-outbreaks   ✅ DONE
+                       │                          [FILE] src/api.py
+                       │                                  │
+                       │                          Input:  { "radius_km": 15,
+                       │                                    "min_cases": 5,
+                       │                                    "cases": [...GPS coords...] }
+                       │                                  │
+                       │                                  ▼
+                       │                         [ML] DBSCAN Clustering
+                       │                              (Haversine Metric)
+                       │                                  │
+                       │                         Output: { "outbreaks": [
+                       │                                    { "cluster_id": 0,
+                       │                                      "centroid_lat": 28.61,
+                       │                                      "sumCases": 7 }
+                       │                                  ]}
+                       │                                  │
+                       ◄──────────────────────────────────┘
+                       │
+                       │  STEP 3: Escalation Decision Logic:              🔲 TODO (Node.js)
+                       │  ┌───────────────────────────────────────────────────────────────┐
+                       │  │ IF confidence_score < 0.60          (flag from POST /predict) │
+                       │  │    OR disease_id IN HIGH_RISK_LIST  (check diseases SQL table) │
+                       │  │    OR sumCases > 5 in area          (flag from /detect-outbr.) │
+                       │  │                                                               │
+                       │  │  -> NOTIFY nearest Veterinarian (push notification/email)     │
+                       │  │  -> INSERT vet_verifications row                              │
+                       │  │                                                               │
+                       │  │ ELSE (High confidence, low-risk, no outbreak)                │
+                       │  │  -> RETURN treatment_advisory text from [SQL] diseases table  │
+                       │  └───────────────────────────────────────────────────────────────┘
+                       │
+   ┌───────────────────┤
+   ▼                   │
+[SQL] vet_verifications  ✅ DONE (table exists in init_db.sql)
+  Created by MERN when escalated.  🔲 TODO (INSERT logic in Node.js)
+  Columns: verification_id, report_id, vet_id, confirmed_disease_id, is_confirmed, clinical_notes, internal_hemorrhage, used_in_training, verified_at
+  Lifecycle: vet fills in confirmed_disease_id -> is_confirmed = TRUE
+
+
+================================================================================
+SECTION 2: GROUND TRUTH COLLECTION FLOW (Human Verification)
+================================================================================
+
+Veterinarian (Web Dashboard / React Frontend)       🔲 TODO (Build Vet Dashboard UI)
+   │
+   │  Vet opens escalated report, examines animal, confirms/corrects AI prediction
+   │
+   ▼
+[MERN] Node.js REST API                             🔲 TODO (Build these endpoints)
+   │  PUT /api/verifications/:id   -> Updates vet_verifications.confirmed_disease_id
+   │  GET /api/reports?status=REVIEW  -> Fetches all pending escalated cases
+   │  GET /api/reports/:id            -> Fetches single report with AI prediction
+   │
+   ▼
+[SQL] vet_verifications                             ✅ DONE (table exists)
+   │  confirmed_disease_id updated by vet
+   │  is_confirmed updated to TRUE
+   │
+   │  (Optional: Physical blood/skin sample sent to lab)
+   │
+   ▼
+[SQL] lab_reports                                   ✅ DONE (table exists)
+   │  Columns: lab_report_id, report_id, lab_technician_id, confirmed_disease_id, test_method, test_results, is_final_truth, used_in_training, verified_at
+   │  Entered by: Lab tech / admin via MERN dashboard   🔲 TODO (Build Lab Entry UI)
+   │
+   │  Lab Report  = HIGHEST PRIORITY ground truth (Priority 1)
+   │  Vet Report  = FALLBACK ground truth (Priority 2)
+
+
+================================================================================
+SECTION 3: RETRAINING FLOW (Continuous Learning)
+================================================================================
+
+Trigger Condition (any one of):                     🔲 TODO (Implement in Node.js as cron)
+  - New verified ground truth count > 50 (batch threshold)
+  - Model accuracy drops below 75% on recent cases
+  - Scheduled monthly retraining cycle
+  - Manual trigger via Admin Dashboard
+
+   │
+   ▼
+[FILE] src/train_worker.py  (Tabular Retraining)    ✅ DONE
+   │
+   │  STEP 1: Connect to PostgreSQL (port 5432 or 5433 Docker fallback)
+   │  STEP 2: Run SQL JOINs:
+   │
+   │    field_reports
+   │      LEFT JOIN lab_reports        (confirmed_disease_id  <- PRIORITY 1)
+   │      LEFT JOIN vet_verifications  (vet_disease_id        <- PRIORITY 2)
+   │
+   │  STEP 3: target = lab_confirmed ?? vet_confirmed  (fillna logic)
+   │  STEP 4: Encode symptoms with MultiLabelBinarizer
+   │  STEP 5: One-hot encode species
+   │  STEP 6: Train VotingClassifier (RF + GBM + LR + XGBoost)
+   │  STEP 7: Save artifacts to model_registry/
+   │
+   │  Saves:
+   ├──────────────────────────────────────────────────────────►
+   │                                           [ML] model_registry/
+   │                                                symptom_ensemble_v1.joblib
+   │                                                symptom_binarizer.joblib
+   │                                                disease_label_encoder.joblib
+   │                                                model_columns.joblib
+   │
+   ▼
+[FILE] src/train_image_worker.py  (CNN Retraining)  ✅ DONE
+   │
+   │  STEP 1: Load images from data/Lumpy Skin Images Dataset/
+   │           ├── Lumpy Skin/  (Class 0)
+   │           └── Normal Skin/ (Class 1)
+   │  STEP 2: Apply transforms (Resize 224x224, Normalize for ImageNet)
+   │  STEP 3: Load pretrained ResNet18 (transfer learning from torchvision)
+   │  STEP 4: Replace final FC layer for 2 classes
+   │  STEP 5: Train for 5 epochs (Adam optimizer, lr=0.001)
+   │  STEP 6: Save weights to model_registry/
+   │
+   │  Saves:
+   ├──────────────────────────────────────────────────────────►
+   │                                           [ML] model_registry/
+   │                                                lumpy_cnn_v1.pth
+   │                                                lumpy_class_names.joblib
+   │
+   ▼
+[API] POST /reload-model                            ✅ DONE
+[FILE] src/api.py
+   │
+   │  Calls load_models() internally
+   │  Re-reads all .joblib and .pth files from model_registry/ into RAM
+   │  Zero-downtime hot-swap: server never restarts!
+   │  Called automatically by train_worker.py after saving new files.
+   │
+   ▼
+FastAPI server now serving predictions with fresh, improved models ✓
+
+
+================================================================================
+SECTION 3B: WHAT MERN NEEDS TO BUILD FOR RETRAINING
+================================================================================
+🔲 TODO: Node.js cron job (runs nightly/monthly)
+   - Count rows in lab_reports + vet_verifications added since last training
+   - If count > 50: trigger retrain by running train_worker.py as subprocess
+   - After train completes: call POST /reload-model to hot-swap new weights
+
+🔲 TODO: Admin Dashboard page
+   - Show current model accuracy (stored in DB after each training run)
+   - Button: "Trigger Manual Retraining"
+   - Display retraining history log
+
+
+================================================================================
+SECTION 4: COMPLETE FILE RESPONSIBILITY MAP
+================================================================================
+
+FILE                               STATUS    RESPONSIBILITY
+─────────────────────────────────  ────────  ──────────────────────────────────────────
+src/api.py                         ✅ DONE   FastAPI gateway. Hosts all /predict,
+                                             /predict-image, /detect-outbreaks,
+                                             /reload-model. Loads models on startup.
+
+src/train_worker.py                ✅ DONE   Tabular model trainer. SQL JOINs across
+                                             3 tables, trains VotingClassifier, saves
+                                             4 .joblib artifacts.
+
+src/train_image_worker.py          ✅ DONE   CNN image trainer. Reads from data/,
+                                             trains ResNet18 for 5 epochs, saves .pth.
+
+db/init_db.sql                     ✅ DONE   Creates all 6 PostgreSQL tables and
+                                             populates with realistic seed/mock data.
+
+db/sih_db_dump.sql                 ✅ DONE   Full pg_dump with schema + all data.
+                                             Use to restore DB on a new machine.
+
+docker-compose.yml                 ✅ DONE   Orchestrates PostgreSQL + FastAPI.
+
+model_registry/                    ✅ DONE   Stores trained model artifacts (.joblib,
+                                             .pth). Auto-created by training workers.
+
+data/Lumpy Skin Images Dataset/    ✅ DONE   1,024 CNN training images (2 classes).
+                                             Excluded from GitHub via .gitignore.
+
+notebooks/models_pipeline.ipynb    ✅ DONE   Experimentation notebook with EDA,
+                                             model training and evaluation.
+
+requirements.txt                   ✅ DONE   All Python dependencies (pip freeze).
+
+.gitignore                         ✅ DONE   Excludes .venv/, data/, __pycache__.
+
+─────────────── TO BE BUILT (MERN Stack) ───────────────────────────────────────
+
+mern/server/index.js               🔲 TODO  Node.js Express entry point
+mern/server/routes/reports.js      🔲 TODO  POST/GET /api/reports endpoints
+mern/server/routes/verifications.js 🔲 TODO PUT /api/verifications/:id
+mern/server/routes/auth.js         🔲 TODO  Login / JWT auth for vets & admins
+mern/server/services/escalation.js 🔲 TODO  Core escalation decision engine
+mern/server/services/mlClient.js   🔲 TODO  Axios calls to FastAPI endpoints
+mern/client/src/pages/Dashboard.jsx 🔲 TODO Main analytics dashboard (React)
+mern/client/src/pages/Reports.jsx  🔲 TODO  Field report submission form
+mern/client/src/pages/VetReview.jsx 🔲 TODO Vet case review and diagnosis page
+mern/client/src/pages/MapView.jsx  🔲 TODO  Leaflet.js outbreak hotspot map
+
+model_registry/                    Stores all trained model artifacts:
+                                   - symptom_ensemble_v1.joblib
+                                   - symptom_binarizer.joblib
+                                   - disease_label_encoder.joblib
+                                   - model_columns.joblib
+                                   - lumpy_cnn_v1.pth
+                                   - lumpy_class_names.joblib
+
+data/Lumpy Skin Images Dataset/    1,024 training images for CNN (2 classes).
+                                   Not pushed to GitHub (too large).
+
+notebooks/models_pipeline.ipynb    Interactive data science notebook. Contains
+                                   EDA, model training code, and accuracy
+                                   evaluation.  Used for experimentation.
+
+requirements.txt                   All Python dependencies for the project.
+
+docs/architecture.txt              High-level ASCII flowchart of the system.
+docs/api_documentation.md          Detailed I/O documentation for every API.
+docs/erd_diagram.txt               Entity-Relationship Diagram of the database.
+docs/dfd_diagram.txt               Data Flow Diagram of the system.
+docs/object_diagram.txt            Object/Instance diagram for a sample case.
+
+
+================================================================================
+SECTION 5: SQL TABLE SCHEMA QUICK REFERENCE
+================================================================================
+
+users            (user_id PK, username, role)
+species          (species_id PK, species_name)
+symptoms         (symptom_id PK, symptom_name, description)
+diseases         (disease_id PK, disease_name, description)
+predefined_symptom_map (map_id PK, symptom_id FK, disease_id FK, species_id FK,
+                        symptom_weight, is_pathognomonic)
+field_reports    (report_id PK, farmer_id, animal_species, symptom_ids[],
+                  latitude, longitude, photo_url, reported_at)
+vet_verifications (verification_id PK, report_id FK, vet_id FK,
+                   confirmed_disease_id FK, is_confirmed, clinical_notes,
+                   internal_hemorrhage, used_in_training, verified_at)
+lab_reports      (lab_report_id PK, report_id FK, lab_technician_id,
+                  confirmed_disease_id FK, test_method, test_results,
+                  is_final_truth, used_in_training, verified_at)
+vaccination_records (vaccination_id PK, farmer_id FK, animal_tag_id,
+                     animal_species, disease_protected_id FK,
+                     vaccine_name, vaccinated_on, next_due_date,
+                     administered_by, is_current BOOL, created_at)
+  NOTE: is_current=TRUE rows used as 'is_vaccinated' feature in train_worker.py
+model_versions   (model_version_id PK, model_type, version_name, model_path,
+                  accuracy, precision_score, recall_score, f1_score, is_active)
+triage_results   (triage_id PK, report_id FK, symptom_prediction_id FK,
+                  image_prediction_id FK, final_prediction_id FK,
+                  final_confidence, risk_score, risk_level)
+
+================================================================================
+END OF COMPLETE ARCHITECTURE DOCUMENT
+================================================================================
