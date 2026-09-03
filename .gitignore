@@ -5,4 +5,7 @@ dist/
 .DS_Store
 work/
 outputs/
+.venv/
+__pycache__/
+
 

@@ -38,7 +38,6 @@ nbformat==5.11.1
 nest-asyncio2==1.7.2
 networkx==3.6.1
 numpy==2.5.2
-nvidia-nccl-cu13==2.31.2
 packaging==26.3
 pandas==3.0.5
 parso==0.8.7
@@ -68,8 +67,8 @@ stack-data==0.6.3
 starlette==1.6.0
 sympy==1.14.0
 threadpoolctl==3.6.0
-torch==2.14.0+cpu
-torchvision==0.29.0+cpu
+torch==2.14.0
+torchvision==0.29.0
 tornado==6.5.8
 traitlets==5.16.1
 typing-inspection==0.4.4
