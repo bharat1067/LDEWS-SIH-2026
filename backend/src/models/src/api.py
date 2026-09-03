@@ -58,6 +58,7 @@ load_models()
 class PredictionRequest(BaseModel):
     species: str
     symptoms: List[int]
+    is_vaccinated: bool = False  # Is the animal vaccinated against the suspected disease?
 
 @app.post("/predict")
 def predict_disease(req: PredictionRequest):
@@ -74,17 +75,20 @@ def predict_disease(req: PredictionRequest):
             symp_encoded = np.zeros((1, len(mlb.classes_)))
             
         df_custom_symp = pd.DataFrame(symp_encoded, columns=[f"symp_{c}" for c in mlb.classes_])
-        
+
         # 2. Transform species
         df_custom_spec = pd.DataFrame(columns=[c for c in expected_columns if c.startswith('species_')])
         df_custom_spec.loc[0] = 0
         species_col = f"species_{req.species}"
         if species_col in df_custom_spec.columns:
             df_custom_spec.at[0, species_col] = 1
-            
-        # 3. Combine Features exactly matching the training data
-        X_custom = pd.concat([df_custom_symp, df_custom_spec], axis=1)
-        X_custom = X_custom[expected_columns]
+
+        # 3. Vaccination feature (binary: 1 = vaccinated against potential disease)
+        df_vacc_feature = pd.DataFrame({'is_vaccinated': [int(req.is_vaccinated)]})
+
+        # 4. Combine Features exactly matching the training data
+        X_custom = pd.concat([df_custom_symp, df_custom_spec, df_vacc_feature], axis=1)
+        X_custom = X_custom.reindex(columns=expected_columns, fill_value=0)
         
         # 4. Predict
         probs = model.predict_proba(X_custom)
