@@ -13,8 +13,10 @@ from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-REGISTRY_DIR = os.path.join(BASE_DIR, "model_registry")
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+REGISTRY_DIR = BASE_DIR / "model_registry"
 
 app = FastAPI(title="LDEWS ML Microservice", version="1.0.0")
 
@@ -42,13 +44,13 @@ def load_models():
     
     # 1. Tabular Ensemble Models
     try:
-        ensemble_path = os.path.join(REGISTRY_DIR, "symptom_ensemble_v1.joblib")
-        binarizer_path = os.path.join(REGISTRY_DIR, "symptom_binarizer.joblib")
-        encoder_path = os.path.join(REGISTRY_DIR, "disease_label_encoder.joblib")
-        columns_path = os.path.join(REGISTRY_DIR, "model_columns.joblib")
+        ensemble_path = REGISTRY_DIR / "symptom_ensemble_v1.joblib"
+        binarizer_path = REGISTRY_DIR / "symptom_binarizer.joblib"
+        encoder_path = REGISTRY_DIR / "disease_label_encoder.joblib"
+        columns_path = REGISTRY_DIR / "model_columns.joblib"
 
-        if (os.path.exists(ensemble_path) and os.path.exists(binarizer_path) and
-            os.path.exists(encoder_path) and os.path.exists(columns_path)):
+        if (ensemble_path.exists() and binarizer_path.exists() and
+            encoder_path.exists() and columns_path.exists()):
             model = joblib.load(ensemble_path)
             mlb = joblib.load(binarizer_path)
             le = joblib.load(encoder_path)
@@ -62,10 +64,10 @@ def load_models():
 
     # 2. ResNet18 Image Model
     try:
-        class_names_path = os.path.join(REGISTRY_DIR, "lumpy_class_names.joblib")
-        weights_path = os.path.join(REGISTRY_DIR, "lumpy_cnn_v1.pth")
+        class_names_path = REGISTRY_DIR / "lumpy_class_names.joblib"
+        weights_path = REGISTRY_DIR / "lumpy_cnn_v1.pth"
 
-        if os.path.exists(class_names_path) and os.path.exists(weights_path):
+        if class_names_path.exists() and weights_path.exists():
             image_class_names = joblib.load(class_names_path)
             res18 = models.resnet18(weights=None)
             num_ftrs = res18.fc.in_features
@@ -86,10 +88,13 @@ load_models()
 @app.get("/health")
 def health_check():
     """Health check reflecting actual status of loaded models."""
+    tabular_loaded = (model is not None and mlb is not None and le is not None and expected_columns is not None)
+    image_loaded = (image_model is not None and image_class_names is not None)
+    status = "healthy" if (tabular_loaded and image_loaded) else "degraded"
     return {
-        "status": "healthy",
-        "tabularModelLoaded": model is not None,
-        "imageModelLoaded": image_model is not None,
+        "status": status,
+        "tabularModelLoaded": tabular_loaded,
+        "imageModelLoaded": image_loaded,
         "device": str(device)
     }
 

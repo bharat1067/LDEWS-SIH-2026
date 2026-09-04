@@ -33,7 +33,38 @@ const upload = multer({
   limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-app.use(cors({ origin: process.env.FRONTEND_ORIGIN || 'http://localhost:5173' }));
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:5174',
+  'http://localhost:3000',
+  process.env.FRONTEND_URL,
+  process.env.FRONTEND_ORIGIN
+].filter(Boolean);
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow server-to-server, curl, mobile, or same-origin requests with no origin header
+    if (!origin) return callback(null, true);
+    try {
+      const url = new URL(origin);
+      const isAllowed =
+        allowedOrigins.includes(origin) ||
+        url.hostname.endsWith('.vercel.app') ||
+        url.hostname === 'localhost' ||
+        url.hostname === '127.0.0.1';
+      if (isAllowed) return callback(null, true);
+    } catch {
+      if (allowedOrigins.includes(origin)) return callback(null, true);
+    }
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
 app.use(express.json());
 
 // Token helpers
@@ -106,9 +137,17 @@ const findRequest = id => {
 };
 
 // --- System & Health ---
+app.get('/health', (_, res) => {
+  res.json({
+    status: 'healthy',
+    service: 'ldews-backend'
+  });
+});
+
 app.get('/api/health', (_, res) => {
   res.json({
-    status: 'ok',
+    status: 'healthy',
+    service: 'ldews-backend',
     database: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected',
     host: mongoose.connection.host || 'none',
     timestamp: new Date().toISOString()
@@ -118,10 +157,18 @@ app.get('/api/health', (_, res) => {
 app.get('/api/ml/health', async (_, res) => {
   try {
     const health = await healthCheckML();
-    res.json(health);
+    const isOnline = health.status === 'online';
+    res.json({
+      status: isOnline ? 'online' : 'offline',
+      mlService: isOnline,
+      fallbackAvailable: true,
+      service: health.service || (isOnline ? 'fastapi' : 'fallback'),
+      details: health.details || null
+    });
   } catch (err) {
     res.json({
       status: 'offline',
+      mlService: false,
       fallbackAvailable: true,
       service: 'fallback',
       error: err.message
@@ -925,7 +972,7 @@ async function start() {
   }
 
   app.listen(port, () => {
-    console.log(`LDEWS Backend API running on http://localhost:${port} [DB: ${connected ? 'Active' : 'Offline'}]`);
+    console.log(`LDEWS Backend API running on port ${port} [DB: ${connected ? 'Active' : 'Offline'}]`);
   });
 }
 
