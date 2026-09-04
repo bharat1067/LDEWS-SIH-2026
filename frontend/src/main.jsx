@@ -35,30 +35,44 @@ const Auth = createContext();
 export const useAuth = () => useContext(Auth);
 
 export const api = async (path, o = {}) => {
-  const s = JSON.parse(localStorage.getItem('ldews-session') || 'null');
-  const isFormData = typeof FormData !== 'undefined' && o.body instanceof FormData;
+  const s = JSON.parse(
+    localStorage.getItem('ldews-session') || 'null'
+  );
+
+  const isFormData =
+    typeof FormData !== 'undefined' &&
+    o.body instanceof FormData;
+
   const headers = {
-    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
-    ...(s?.token ? { Authorization: `Bearer ${s.token}` } : {}),
+    ...(isFormData ? {} : {
+      'Content-Type': 'application/json'
+    }),
+    ...(s?.token ? {
+      Authorization: `Bearer ${s.token}`
+    } : {}),
     ...(o.headers || {})
   };
+
   const url = buildApiUrl(path);
+
+  console.log('API REQUEST:', url);
+
   const r = await fetch(url, {
     ...o,
     headers
   });
-  const d = await r.json().catch(() => ({}));
-  if (r.status === 401) {
-    localStorage.removeItem('ldews-session');
-    if (s?.token) {
-      window.dispatchEvent(new Event('ldews-logout'));
-    }
-    throw Error(d.message || 'Session expired. Please log in again.');
-  }
+
+  const data = await r.json();
+
   if (!r.ok) {
-    throw Error(d.message || 'Request failed');
+    throw new Error(
+      data?.message ||
+      data?.error ||
+      `Request failed with status ${r.status}`
+    );
   }
-  return d;
+
+  return data;
 };
 
 const roles = {
