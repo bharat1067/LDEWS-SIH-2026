@@ -608,17 +608,17 @@ function Report() {
       } else {
         const payload = iv
           ? {
-              ...f,
-              symptoms: parsed,
-              farmerName: user.name,
-              phone: user.phone || '9876543210',
-              language: 'Hindi'
-            }
+            ...f,
+            symptoms: parsed,
+            farmerName: user.name,
+            phone: user.phone || '9876543210',
+            language: 'Hindi'
+          }
           : {
-              ...f,
-              symptoms: parsed,
-              location: { district: f.district, taluka: f.taluka, village: f.village }
-            };
+            ...f,
+            symptoms: parsed,
+            location: { district: f.district, taluka: f.taluka, village: f.village }
+          };
 
         res = await api(iv ? '/ivr/report' : '/reports', {
           method: 'POST',
@@ -1462,9 +1462,9 @@ function DistrictHome() {
 
               <div style={{ height: '400px', width: '100%', borderRadius: '8px', overflow: 'hidden', marginTop: '16px' }}>
                 {d.clusters && d.clusters.filter(c => c.centroid?.latitude).length > 0 ? (
-                  <MapContainer 
-                    center={[d.clusters.find(c => c.centroid?.latitude).centroid.latitude, d.clusters.find(c => c.centroid?.latitude).centroid.longitude]} 
-                    zoom={9} 
+                  <MapContainer
+                    center={[d.clusters.find(c => c.centroid?.latitude).centroid.latitude, d.clusters.find(c => c.centroid?.latitude).centroid.longitude]}
+                    zoom={9}
                     style={{ height: '100%', width: '100%' }}
                   >
                     <TileLayer
@@ -1483,9 +1483,9 @@ function DistrictHome() {
                         }}
                       >
                         <Popup>
-                          <strong>{c.disease}</strong><br/>
-                          Location: {c.village}<br/>
-                          Active Cases: {c.caseCount}<br/>
+                          <strong>{c.disease}</strong><br />
+                          Location: {c.village}<br />
+                          Active Cases: {c.caseCount}<br />
                           Max Risk Score: {c.risk}%
                         </Popup>
                       </Circle>
@@ -1729,7 +1729,7 @@ function DistrictCases() {
     <Page title={`Active Case Register — ${user.district || 'Nashik'}`} subtitle="Comprehensive listing of all non-closed reports across talukas">
       <section className="panel">
         <Load error={e}>
-          {d && <Cases cases={d} open={() => {}} />}
+          {d && <Cases cases={d} open={() => { }} />}
         </Load>
       </section>
     </Page>

@@ -190,8 +190,43 @@ export async function seedDatabase(connection = mongoose.connection) {
     createdAt: new Date(Date.now() - 1728e5)
   });
 
+  // Case 7 & 8: Active LSD Cluster in Wavi (To show multiple hotspots on live map)
+  const lsdCase1 = await FarmerReport.create({
+    caseId: 'CASE-260902-07',
+    farmer: farmer._id,
+    farmerName: farmer.name,
+    phone: farmer.phone,
+    animalType: 'Buffalo',
+    symptoms: ['Skin nodules', 'Fever', 'Swollen lymph nodes'],
+    location: waviLoc,
+    source: 'web',
+    language: 'Marathi',
+    suspectedDisease: 'Lumpy Skin Disease',
+    triage: 'medium',
+    localOutbreakRisk: 55,
+    status: 'Confirmed',
+    createdAt: new Date(Date.now() - 432e5) // 12 hours ago
+  });
+
+  const lsdCase2 = await FarmerReport.create({
+    caseId: 'CASE-260902-08',
+    farmer: asha._id,
+    farmerName: asha.name,
+    phone: asha.phone,
+    animalType: 'Cattle',
+    symptoms: ['Skin nodules', 'Fever', 'Lethargy'],
+    location: { ...waviLoc, latitude: 19.991, longitude: 74.112 }, // slight offset
+    source: 'sms',
+    language: 'Marathi',
+    suspectedDisease: 'Lumpy Skin Disease',
+    triage: 'medium',
+    localOutbreakRisk: 58,
+    status: 'Confirmed',
+    createdAt: new Date(Date.now() - 216e5) // 6 hours ago
+  });
+
   // 4. Advisories for reports
-  const allCases = [lowCase, escalatedCase, verifiedCase, labTestingCase, confirmedCase, negativeCase];
+  const allCases = [lowCase, escalatedCase, verifiedCase, labTestingCase, confirmedCase, negativeCase, lsdCase1, lsdCase2];
   for (const c of allCases) {
     const advisory = await Advisory.create({
       case: c._id,
