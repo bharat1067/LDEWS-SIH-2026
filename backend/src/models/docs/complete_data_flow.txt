@@ -66,15 +66,16 @@ Field Worker (Mobile App / React Frontend)
                        │                                              photo_url,
                        │                                              reported_at
                        │
-                       │  STEP 2: Send GPS coords to outbreak detector:
+                       │  STEP 2: Filter active cases (last 30 days), group by suspected disease,
+                       │          and send GPS coords to outbreak detector per disease group:
                        ├──────────────────────────────────┐
                        │                                  ▼
                        │                          [API]  POST /detect-outbreaks   ✅ DONE
                        │                          [FILE] src/api.py
                        │                                  │
                        │                          Input:  { "radius_km": 15,
-                       │                                    "min_cases": 5,
-                       │                                    "cases": [...GPS coords...] }
+                       │                                    "min_cases": 2,
+                       │                                    "cases": [...GPS coords for specific disease...] }
                        │                                  │
                        │                                  ▼
                        │                         [ML] DBSCAN Clustering

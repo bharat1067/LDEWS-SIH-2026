@@ -11,4 +11,4 @@ outputs/
 .venv/
 __pycache__/
 
-
+backend/src/models/data/

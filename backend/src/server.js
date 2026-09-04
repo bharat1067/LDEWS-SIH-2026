@@ -633,8 +633,14 @@ async function districtStats(district) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
   const reports = await FarmerReport.find({ 'location.district': district });
-  const active = reports.filter(x => !['Negative', 'Closed'].includes(x.status));
+  const active = reports.filter(x => {
+    const isRecent = x.createdAt ? new Date(x.createdAt) >= thirtyDaysAgo : true;
+    return isRecent && !['Negative', 'Closed'].includes(x.status);
+  });
   const confirmed = reports.filter(x => x.status === 'Confirmed');
 
   const stageList = ['Monitoring', 'Escalated to Vet', 'Vet Verified', 'Lab Testing', 'Confirmed', 'Negative', 'Closed'];
@@ -650,44 +656,59 @@ async function districtStats(district) {
 
   if (validCoordCases.length >= minCases) {
     const numToCase = new Map();
-    const casesCoords = validCoordCases.map((c, idx) => {
-      const numId = idx + 1;
-      numToCase.set(numId, c);
-      return {
-        report_id: numId,
-        latitude: c.location.latitude,
-        longitude: c.location.longitude
-      };
-    });
+    let numIdCounter = 1;
+    let clusterIdCounter = 1;
+    
+    const diseaseGroups = validCoordCases.reduce((acc, c) => {
+      const d = c.suspectedDisease || 'Livestock Outbreak';
+      if (!acc[d]) acc[d] = [];
+      acc[d].push(c);
+      return acc;
+    }, {});
 
     try {
-      const dbscanRes = await detectOutbreaks({
-        radiusKm: 15.0,
-        minCases,
-        cases: casesCoords
-      });
+      for (const [disease, cases] of Object.entries(diseaseGroups)) {
+        if (cases.length < minCases) continue;
 
-      if (dbscanRes.success && dbscanRes.outbreaks && dbscanRes.outbreaks.length > 0) {
-        clusters = dbscanRes.outbreaks.map(ob => {
-          const casesInCluster = ob.affected_report_ids.map(id => numToCase.get(id)).filter(Boolean);
-          const first = casesInCluster[0];
-          const maxRisk = Math.max(...casesInCluster.map(c => c.localOutbreakRisk || 0), 0);
+        const casesCoords = cases.map(c => {
+          const id = numIdCounter++;
+          numToCase.set(id, c);
           return {
-            clusterId: ob.cluster_id,
-            centroid: {
-              latitude: ob.centroid_latitude,
-              longitude: ob.centroid_longitude
-            },
-            radiusKm: 15,
-            caseCount: ob.sumCases,
-            caseIds: casesInCluster.map(c => c.caseId),
-            village: first?.location?.village || `Cluster-${ob.cluster_id + 1}`,
-            taluka: first?.location?.taluka || '',
-            disease: first?.suspectedDisease || 'Livestock Outbreak',
-            risk: maxRisk,
-            source: 'dbscan'
+            report_id: id,
+            latitude: c.location.latitude,
+            longitude: c.location.longitude
           };
         });
+
+        const dbscanRes = await detectOutbreaks({
+          radiusKm: 15.0,
+          minCases,
+          cases: casesCoords
+        });
+
+        if (dbscanRes.success && dbscanRes.outbreaks && dbscanRes.outbreaks.length > 0) {
+          const diseaseClusters = dbscanRes.outbreaks.map(ob => {
+            const casesInCluster = ob.affected_report_ids.map(id => numToCase.get(id)).filter(Boolean);
+            const first = casesInCluster[0];
+            const maxRisk = Math.max(...casesInCluster.map(c => c.localOutbreakRisk || 0), 0);
+            return {
+              clusterId: clusterIdCounter++,
+              centroid: {
+                latitude: ob.centroid_latitude,
+                longitude: ob.centroid_longitude
+              },
+              radiusKm: 15,
+              caseCount: ob.sumCases,
+              caseIds: casesInCluster.map(c => c.caseId),
+              village: first?.location?.village || `Cluster-${clusterIdCounter}`,
+              taluka: first?.location?.taluka || '',
+              disease: disease,
+              risk: maxRisk,
+              source: 'dbscan'
+            };
+          });
+          clusters.push(...diseaseClusters);
+        }
       }
     } catch {
       // Graceful fallback to village-density grouping
