@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate, useParams } from 'react-router-dom';
+import { MapContainer, TileLayer, Circle, Popup } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
 import {
   Bell,
   ClipboardPlus,
@@ -1458,20 +1460,39 @@ function DistrictHome() {
                 Markers represent active cases from the real-time database. Historical disease archives and state predictive models are strictly segregated.
               </p>
 
-              <div className="map-grid">
-                {d.mapData && d.mapData.length > 0 ? (
-                  d.mapData.map(c => (
-                    <div key={c.caseId} className="map-card" style={{ borderLeft: `4px solid ${c.risk >= 70 ? '#b42318' : '#0b4f8a'}` }}>
-                      <b>{c.village}</b>
-                      <span>{c.disease}</span>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '6px' }}>
-                        <Badge>{c.status}</Badge>
-                        <small style={{ fontWeight: 700, color: c.risk >= 70 ? '#b42318' : '#0b4f8a' }}>{c.risk}% risk</small>
-                      </div>
-                    </div>
-                  ))
+              <div style={{ height: '400px', width: '100%', borderRadius: '8px', overflow: 'hidden', marginTop: '16px' }}>
+                {d.clusters && d.clusters.filter(c => c.centroid?.latitude).length > 0 ? (
+                  <MapContainer 
+                    center={[d.clusters.find(c => c.centroid?.latitude).centroid.latitude, d.clusters.find(c => c.centroid?.latitude).centroid.longitude]} 
+                    zoom={9} 
+                    style={{ height: '100%', width: '100%' }}
+                  >
+                    <TileLayer
+                      url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                      attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                    />
+                    {d.clusters.filter(c => c.centroid?.latitude).map(c => (
+                      <Circle
+                        key={c.clusterId}
+                        center={[c.centroid.latitude, c.centroid.longitude]}
+                        radius={(c.radiusKm || 15) * 1000}
+                        pathOptions={{
+                          color: c.risk >= 70 ? '#b42318' : '#eab308',
+                          fillColor: c.risk >= 70 ? '#b42318' : '#eab308',
+                          fillOpacity: 0.4
+                        }}
+                      >
+                        <Popup>
+                          <strong>{c.disease}</strong><br/>
+                          Location: {c.village}<br/>
+                          Active Cases: {c.caseCount}<br/>
+                          Max Risk Score: {c.risk}%
+                        </Popup>
+                      </Circle>
+                    ))}
+                  </MapContainer>
                 ) : (
-                  <div className="empty">No active field markers in this district.</div>
+                  <div className="empty">No geographic hotspots available.</div>
                 )}
               </div>
             </section>
