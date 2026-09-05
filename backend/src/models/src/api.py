@@ -120,14 +120,13 @@ class CaseCoordinate(BaseModel):
     longitude: float
 
 class ClusterRequest(BaseModel):
-    # DEPRECATED: HDBSCAN calculates radius dynamically based on density. Parameter ignored.
-    radius_km: float = Field(15.0, description="DEPRECATED: Parameter ignored. HDBSCAN calculates radius dynamically.")
+    radius_km: float = Field(15.0, description="The radius in km to consider for clustering")
     min_cases: int = 3
     cases: List[CaseCoordinate]
 
 @app.post("/detect-outbreaks")
 def detect_outbreaks(req: ClusterRequest):
-    if not req.cases:
+    if not req.cases or len(req.cases) < req.min_cases:
         return {"outbreaks": []}
         
     # Extract coordinates in radians for Haversine metric
@@ -136,9 +135,15 @@ def detect_outbreaks(req: ClusterRequest):
         coords.append([math.radians(c.latitude), math.radians(c.longitude)])
     
     # HDBSCAN clustering
-    # HDBSCAN dynamically finds clusters of varying densities without a strict eps radius.
-    # The haversine metric correctly calculates distance on a sphere based on the radians coordinates.
-    db = HDBSCAN(min_cluster_size=req.min_cases, metric='haversine').fit(coords)
+    # Convert radius_km to radians for the haversine metric (Earth radius ~ 6371 km)
+    epsilon_radians = req.radius_km / 6371.0
+    
+    # Use cluster_selection_epsilon to prevent merging clusters separated by more than radius_km
+    db = HDBSCAN(
+        min_cluster_size=req.min_cases, 
+        metric='haversine',
+        cluster_selection_epsilon=epsilon_radians
+    ).fit(coords)
     
     labels = db.labels_
     

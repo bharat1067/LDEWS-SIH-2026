@@ -66,7 +66,13 @@ export async function predict({
 
   const reports = Number(recentLocalReports ?? localReportCount) || 0;
   const distRisk = Number(districtRisk) || 0;
-  const localOutbreakRisk = Math.min(95, Math.max(10, base + reports * 7 + Math.round(distRisk * 0.12)));
+
+  // Calculate risk score based on Epidemiological Model
+  const clusteringPenalty = (1 - Math.exp(-0.4 * reports)) * 25; // Logistic saturation for outbreaks
+  const endemicityPrior = distRisk * 0.10; // Bayesian prior from district history
+  
+  let localOutbreakRisk = Math.round(base + clusteringPenalty + endemicityPrior);
+  localOutbreakRisk = Math.min(100, Math.max(0, localOutbreakRisk));
 
   if (localOutbreakRisk >= 70) {
     triage = 'high';

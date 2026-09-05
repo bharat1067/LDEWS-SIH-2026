@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, NavLink, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { MapContainer, TileLayer, Circle, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Circle, Popup, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import {
   Bell,
@@ -1797,6 +1797,75 @@ function Clusters() {
 // ----------------------------------------------------
 // 5. State Officer Strategic Experience
 // ----------------------------------------------------
+function ViewportClusterLayer() {
+  const [clusters, setClusters] = useState([]);
+  const map = useMapEvents({
+    moveend: () => fetchClusters(),
+    zoomend: () => fetchClusters()
+  });
+
+  const fetchClusters = async () => {
+    const bounds = map.getBounds();
+    const minLng = bounds.getWest();
+    const minLat = bounds.getSouth();
+    const maxLng = bounds.getEast();
+    const maxLat = bounds.getNorth();
+    
+    try {
+      // The `api` utility automatically adds the Authorization header
+      const res = await api('/state/viewport-clusters', {
+        method: 'POST',
+        body: JSON.stringify({
+          bounds: [[minLng, minLat], [maxLng, maxLat]],
+          radiusKm: 15.0,
+          minCases: 2
+        })
+      });
+      setClusters(res.clusters || []);
+    } catch(err) {
+      console.error('Failed to fetch viewport clusters', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchClusters();
+  }, []);
+
+  return (
+    <>
+      {clusters.map(c => (
+        <Circle
+          key={c.clusterId}
+          center={[c.centroid.latitude, c.centroid.longitude]}
+          radius={(c.radiusKm || 15) * 1000}
+          pathOptions={{
+            color: c.risk >= 70 ? '#b42318' : '#eab308',
+            fillColor: c.risk >= 70 ? '#b42318' : '#eab308',
+            fillOpacity: 0.4
+          }}
+        >
+          <Popup>
+            <strong>{c.disease}</strong><br />
+            {c.district.includes(',') ? (
+              <>Districts Involved: <strong>{c.district}</strong><br /></>
+            ) : (
+              <>District: {c.district}<br /></>
+            )}
+            Villages: {c.village}<br />
+            Active Cases: {c.caseCount}<br />
+            Max Risk Score: {c.risk}%<br />
+            <div style={{ marginTop: '4px' }}>
+              <span className={`badge ${c.source === 'dbscan' ? 'green' : 'amber'}`}>
+                {c.source === 'dbscan' ? 'DBSCAN ML' : 'Density Fallback'}
+              </span>
+            </div>
+          </Popup>
+        </Circle>
+      ))}
+    </>
+  );
+}
+
 function StateHome() {
   const { d, e } = useLoad('/state/districts');
   const { d: reqs } = useLoad('/state/requests');
@@ -1816,6 +1885,33 @@ function StateHome() {
               <Metric label="Monitored Districts" value={d.length} note="Full state coverage" />
               <Metric label="Pending Action Requests" value={reqs?.length ?? 0} note="Awaiting State decision" />
             </div>
+
+            {/* DYNAMIC VIEWPORT MAP */}
+            <section className="panel" style={{ borderTop: '3px solid #b42318' }}>
+              <div className="panel-title">
+                <h2>
+                  <Map size={18} color="#b42318" />
+                  Dynamic State-Wide Outbreak Map
+                </h2>
+                <Badge>HDBSCAN CROSS-BOUNDARY CLUSTERING</Badge>
+              </div>
+              <p className="hint" style={{ marginBottom: '14px' }}>
+                Pan and zoom to dynamically cluster active outbreaks across district and village borders. Powered by spatial density machine learning.
+              </p>
+              <div style={{ height: '400px', width: '100%', borderRadius: '8px', overflow: 'hidden', marginTop: '16px' }}>
+                <MapContainer
+                  center={[19.6, 74.3]} // Center roughly over Maharashtra demo data
+                  zoom={7}
+                  style={{ height: '100%', width: '100%' }}
+                >
+                  <TileLayer
+                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  />
+                  <ViewportClusterLayer />
+                </MapContainer>
+              </div>
+            </section>
 
             {/* DISTRICT RISK RANKING TABLE */}
             <section className="panel" style={{ borderTop: '3px solid #062b51' }}>

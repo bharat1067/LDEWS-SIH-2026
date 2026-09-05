@@ -916,6 +916,103 @@ app.get('/api/state/outbreaks', auth(['state']), async (req, res, next) => {
   }
 });
 
+app.post('/api/state/viewport-clusters', auth(['state', 'district']), async (req, res, next) => {
+  try {
+    const { bounds, radiusKm = 15.0, minCases = 2 } = req.body;
+    if (!bounds || bounds.length !== 2) {
+      return res.status(400).json({ message: 'bounds [[minLng, minLat], [maxLng, maxLat]] required' });
+    }
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    // Fetch active cases within the map viewport
+    const active = await FarmerReport.find({
+      'location.coordinates': {
+        $geoWithin: { $box: bounds }
+      },
+      createdAt: { $gte: thirtyDaysAgo },
+      status: { $nin: ['Negative', 'Closed'] }
+    });
+
+    const validCoordCases = active.filter(
+      c => typeof c.location?.latitude === 'number' && typeof c.location?.longitude === 'number'
+    );
+
+    let clusters = [];
+    if (validCoordCases.length >= minCases) {
+      const numToCase = new Map();
+      let numIdCounter = 1;
+      let clusterIdCounter = 1;
+      
+      const diseaseGroups = validCoordCases.reduce((acc, c) => {
+        const d = c.suspectedDisease || 'Livestock Outbreak';
+        if (!acc[d]) acc[d] = [];
+        acc[d].push(c);
+        return acc;
+      }, {});
+
+      for (const [disease, cases] of Object.entries(diseaseGroups)) {
+        if (cases.length < minCases) continue;
+
+        const casesCoords = cases.map(c => {
+          const id = numIdCounter++;
+          numToCase.set(id, c);
+          return {
+            report_id: id,
+            latitude: c.location.latitude,
+            longitude: c.location.longitude
+          };
+        });
+
+        // Use our Python ML Service for true viewport HDBSCAN clustering
+        const dbscanRes = await detectOutbreaks({
+          radiusKm,
+          minCases,
+          cases: casesCoords
+        });
+
+        if (dbscanRes.success && dbscanRes.outbreaks && dbscanRes.outbreaks.length > 0) {
+          const diseaseClusters = dbscanRes.outbreaks.map(ob => {
+            const casesInCluster = ob.affected_report_ids.map(id => numToCase.get(id)).filter(Boolean);
+            const maxRisk = Math.max(...casesInCluster.map(c => c.localOutbreakRisk || 0), 0);
+            
+            // Extract unique locations for cross-border clusters
+            const uniqueDistricts = [...new Set(casesInCluster.map(c => c.location?.district).filter(Boolean))];
+            const uniqueVillages = [...new Set(casesInCluster.map(c => c.location?.village).filter(Boolean))];
+            const uniqueTalukas = [...new Set(casesInCluster.map(c => c.location?.taluka).filter(Boolean))];
+
+            return {
+              clusterId: clusterIdCounter++,
+              centroid: {
+                latitude: ob.centroid_latitude,
+                longitude: ob.centroid_longitude
+              },
+              radiusKm,
+              caseCount: ob.sumCases,
+              caseIds: casesInCluster.map(c => c.caseId),
+              village: uniqueVillages.join(', ') || `Cluster-${clusterIdCounter}`,
+              taluka: uniqueTalukas.join(', ') || '',
+              district: uniqueDistricts.join(', ') || '',
+              disease: disease,
+              risk: maxRisk,
+              source: 'dbscan'
+            };
+          });
+          clusters.push(...diseaseClusters);
+        }
+      }
+    }
+
+    res.json({
+      cases: validCoordCases.length,
+      clusters
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 app.get('/api/state/requests', auth(['state']), async (req, res, next) => {
   try {
     const requests = await ActionRequest.find({ status: { $in: ['Pending', 'Prioritized'] } }).sort({ createdAt: -1 });

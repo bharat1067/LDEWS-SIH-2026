@@ -8,7 +8,8 @@ const locationSchema = new Schema({
   taluka: { type: String },
   village: { type: String, required: true },
   latitude: { type: Number },
-  longitude: { type: Number }
+  longitude: { type: Number },
+  coordinates: { type: [Number], index: '2d' } // [longitude, latitude] for geo queries
 }, { _id: false });
 
 export const User = model('User', new Schema({

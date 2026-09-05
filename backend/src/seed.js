@@ -73,9 +73,9 @@ export async function seedDatabase(connection = mongoose.connection) {
     { name: 'Alephata', taluka: junnar._id, district: 'Pune', latitude: 19.193, longitude: 74.118 }
   ]);
 
-  const pimpalgaonLoc = { district: 'Nashik', taluka: 'Niphad', village: 'Pimpalgaon', latitude: 20.084, longitude: 74.086 };
-  const waviLoc = { district: 'Nashik', taluka: 'Sinnar', village: 'Wavi', latitude: 19.989, longitude: 74.111 };
-  const alephataLoc = { district: 'Pune', taluka: 'Junnar', village: 'Alephata', latitude: 19.193, longitude: 74.118 };
+  const pimpalgaonLoc = { district: 'Nashik', taluka: 'Niphad', village: 'Pimpalgaon', latitude: 20.084, longitude: 74.086, coordinates: [74.086, 20.084] };
+  const waviLoc = { district: 'Nashik', taluka: 'Sinnar', village: 'Wavi', latitude: 19.989, longitude: 74.111, coordinates: [74.111, 19.989] };
+  const alephataLoc = { district: 'Pune', taluka: 'Junnar', village: 'Alephata', latitude: 19.193, longitude: 74.118, coordinates: [74.118, 19.193] };
 
   // 3. Multi-stage Farmer Reports
   // Case 1: Monitoring (< 70 threshold)
@@ -215,7 +215,7 @@ export async function seedDatabase(connection = mongoose.connection) {
     phone: asha.phone,
     animalType: 'Cattle',
     symptoms: ['Skin nodules', 'Fever', 'Lethargy'],
-    location: { ...waviLoc, latitude: 19.991, longitude: 74.112 }, // slight offset
+    location: { ...waviLoc, latitude: 19.991, longitude: 74.112, coordinates: [74.112, 19.991] }, // slight offset
     source: 'sms',
     language: 'Marathi',
     suspectedDisease: 'Lumpy Skin Disease',

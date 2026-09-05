@@ -89,6 +89,13 @@ Field Worker (Mobile App / React Frontend)
                        │                                  │
                        ◄──────────────────────────────────┘
                        │
+                       │  RISK SCORING ENGINE (Epidemiological Model):
+                       │  Calculates `localOutbreakRisk` (0-100) using:
+                       │   1. Base Risk: Continuous scaling from ML confidence.
+                       │   2. Local Clustering: Logistic saturation (1 - e^(-kx)) 
+                       │      based on recent cases in the village.
+                       │   3. Endemicity Prior: Bayesian baseline from district.
+                       │
                        │  STEP 3: Escalation Decision Logic:              🔲 TODO (Node.js)
                        │  ┌───────────────────────────────────────────────────────────────┐
                        │  │ IF confidence_score < 0.60          (flag from POST /predict) │

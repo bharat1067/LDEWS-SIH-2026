@@ -69,6 +69,11 @@ export async function processReport(payload, farmer = null) {
     }
   }
 
+  // Populate GeoJSON coordinates array if we have lat/lng
+  if (typeof loc.longitude === 'number' && typeof loc.latitude === 'number') {
+    loc.coordinates = [loc.longitude, loc.latitude];
+  }
+
   // Count recent reports in the same village over the last 7 days
   const recent = await FarmerReport.countDocuments({
     'location.village': loc.village,
@@ -90,9 +95,14 @@ export async function processReport(payload, farmer = null) {
     const conf = mlAttempt.confidence_score;
     const reqVet = Boolean(mlAttempt.requires_vet_review);
 
-    // Calculate risk score based on confidence and local density
-    const base = conf >= 0.8 ? 65 : (conf >= 0.6 ? 50 : 35);
-    const localOutbreakRisk = Math.min(95, Math.max(15, base + recent * 7 + Math.round((district?.riskScore || 0) * 0.12)));
+    // Calculate risk score based on confidence and local density (Epidemiological Model)
+    const baseRisk = conf * 65; // Continuous scaling of confidence
+    const clusteringPenalty = (1 - Math.exp(-0.4 * recent)) * 25; // Logistic saturation for outbreaks
+    const endemicityPrior = (district?.riskScore || 0) * 0.10; // Bayesian prior from district history
+    
+    let localOutbreakRisk = Math.round(baseRisk + clusteringPenalty + endemicityPrior);
+    localOutbreakRisk = Math.min(100, Math.max(0, localOutbreakRisk)); // Clamp between 0 and 100
+
     const triage = (localOutbreakRisk >= 70 || reqVet || conf < 0.6) ? 'high' : (localOutbreakRisk >= 45 ? 'medium' : 'low');
 
     result = {
