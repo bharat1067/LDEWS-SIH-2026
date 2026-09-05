@@ -5,9 +5,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import pandas as pd
 import numpy as np
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import HDBSCAN
 import math
 import io
 from PIL import Image
@@ -120,13 +120,13 @@ class CaseCoordinate(BaseModel):
     longitude: float
 
 class ClusterRequest(BaseModel):
-    radius_km: float = 15.0
+    radius_km: float = Field(15.0, description="The radius in km to consider for clustering")
     min_cases: int = 3
     cases: List[CaseCoordinate]
 
 @app.post("/detect-outbreaks")
 def detect_outbreaks(req: ClusterRequest):
-    if not req.cases:
+    if not req.cases or len(req.cases) < req.min_cases:
         return {"outbreaks": []}
         
     # Extract coordinates in radians for Haversine metric
@@ -134,12 +134,16 @@ def detect_outbreaks(req: ClusterRequest):
     for c in req.cases:
         coords.append([math.radians(c.latitude), math.radians(c.longitude)])
     
-    # DBSCAN clustering
-    # eps is the max distance between two samples for one to be considered as in the neighborhood of the other.
-    # Earth radius in km = 6371.0
-    eps_rad = req.radius_km / 6371.0
+    # HDBSCAN clustering
+    # Convert radius_km to radians for the haversine metric (Earth radius ~ 6371 km)
+    epsilon_radians = req.radius_km / 6371.0
     
-    db = DBSCAN(eps=eps_rad, min_samples=req.min_cases, algorithm='ball_tree', metric='haversine').fit(coords)
+    # Use cluster_selection_epsilon to prevent merging clusters separated by more than radius_km
+    db = HDBSCAN(
+        min_cluster_size=req.min_cases, 
+        metric='haversine',
+        cluster_selection_epsilon=epsilon_radians
+    ).fit(coords)
     
     labels = db.labels_
     
