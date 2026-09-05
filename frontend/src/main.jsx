@@ -139,11 +139,8 @@ function LanguageSelector() {
       <button
         type="button"
         className={`lang-btn ${language === 'mr' ? 'active' : ''}`}
-        onClick={() => {
-          setLanguage('mr');
-          alert(t('govline.marathiComingSoon', 'Marathi language support will be available soon in the next release.'));
-        }}
-        title="मराठी (लवकरच उपलब्ध / Coming Soon)"
+        onClick={() => setLanguage('mr')}
+        title="मराठी"
       >
         मराठी
       </button>
