@@ -5,9 +5,9 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 import pandas as pd
 import numpy as np
 from fastapi import FastAPI, HTTPException, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List
-from sklearn.cluster import DBSCAN
+from sklearn.cluster import HDBSCAN
 import math
 import io
 from PIL import Image
@@ -120,7 +120,8 @@ class CaseCoordinate(BaseModel):
     longitude: float
 
 class ClusterRequest(BaseModel):
-    radius_km: float = 15.0
+    # DEPRECATED: HDBSCAN calculates radius dynamically based on density. Parameter ignored.
+    radius_km: float = Field(15.0, description="DEPRECATED: Parameter ignored. HDBSCAN calculates radius dynamically.")
     min_cases: int = 3
     cases: List[CaseCoordinate]
 
@@ -134,12 +135,10 @@ def detect_outbreaks(req: ClusterRequest):
     for c in req.cases:
         coords.append([math.radians(c.latitude), math.radians(c.longitude)])
     
-    # DBSCAN clustering
-    # eps is the max distance between two samples for one to be considered as in the neighborhood of the other.
-    # Earth radius in km = 6371.0
-    eps_rad = req.radius_km / 6371.0
-    
-    db = DBSCAN(eps=eps_rad, min_samples=req.min_cases, algorithm='ball_tree', metric='haversine').fit(coords)
+    # HDBSCAN clustering
+    # HDBSCAN dynamically finds clusters of varying densities without a strict eps radius.
+    # The haversine metric correctly calculates distance on a sphere based on the radians coordinates.
+    db = HDBSCAN(min_cluster_size=req.min_cases, metric='haversine').fit(coords)
     
     labels = db.labels_
     
