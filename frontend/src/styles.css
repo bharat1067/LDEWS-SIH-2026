@@ -958,7 +958,7 @@ td small {
   display: flex;
   align-items: center;
   gap: 12px;
-  z-index: 50;
+  z-index: 10000;
   max-width: 460px;
 }
 
@@ -983,7 +983,7 @@ td small {
   background: rgba(6, 43, 81, 0.45);
   display: grid;
   place-items: center;
-  z-index: 60;
+  z-index: 9999;
   padding: 20px;
 }
 
