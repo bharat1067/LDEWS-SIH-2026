@@ -19,7 +19,7 @@ import {
 export async function seedDatabase(connection = mongoose.connection) {
   console.log('Seeding demo database...');
 
-  // Idempotent clean-up: delete all documents in reverse dependency order
+  // Idempotent clean-up: delete all workflow and spatial documents
   const models = [
     Notification,
     LabResult,
@@ -31,28 +31,81 @@ export async function seedDatabase(connection = mongoose.connection) {
     HistoricalDiseaseRecord,
     Village,
     Taluka,
-    District,
-    User
+    District
   ];
 
   for (const m of models) {
     await m.deleteMany({});
   }
 
+  // Seed Safety Rule: Clean and refresh demo users, while preserving registered/activated government officers
+  await User.deleteMany({ accountType: 'demo' });
+
   const password = await bcrypt.hash('demo123', 10);
 
-  // 1. Users for all 5 roles
-  const users = await User.insertMany([
-    { name: 'Suresh Patil', phone: '9876543210', email: 'suresh@farmer.gov.in', password, role: 'farmer', district: 'Nashik', taluka: 'Niphad' },
-    { name: 'Asha Kale', phone: '9876543211', email: 'asha@farmer.gov.in', password, role: 'farmer', district: 'Nashik', taluka: 'Niphad' },
-    { name: 'Ramesh Wagh', phone: '9876543212', email: 'ramesh@farmer.gov.in', password, role: 'farmer', district: 'Nashik', taluka: 'Sinnar' },
-    { name: 'Dr Ananya Shah', phone: '9000000001', email: 'vet@nashik.gov.in', password, role: 'vet', district: 'Nashik', taluka: 'Niphad' },
-    { name: 'Nisha Rao', phone: '9000000002', email: 'lab@nashik.gov.in', password, role: 'lab', district: 'Nashik' },
-    { name: 'Vikram Deshmukh', phone: '9000000003', email: 'officer@nashik.gov.in', password, role: 'district', district: 'Nashik' },
-    { name: 'Priya Kulkarni', phone: '9000000004', email: 'officer@state.gov.in', password, role: 'state', district: 'Maharashtra' }
+  // 1. Seed Demo Accounts for all 5 roles (Instant hackathon evaluation)
+  const demoUsers = await User.insertMany([
+    { name: 'Suresh Patil', phone: '9876543210', email: 'suresh@farmer.gov.in', password, role: 'farmer', district: 'Nashik', taluka: 'Niphad', accountType: 'demo', accountActivated: true, designation: 'Dairy Farmer' },
+    { name: 'Asha Kale', phone: '9876543211', email: 'asha@farmer.gov.in', password, role: 'farmer', district: 'Nashik', taluka: 'Niphad', accountType: 'demo', accountActivated: true, designation: 'Livestock Owner' },
+    { name: 'Ramesh Wagh', phone: '9876543212', email: 'ramesh@farmer.gov.in', password, role: 'farmer', district: 'Nashik', taluka: 'Sinnar', accountType: 'demo', accountActivated: true, designation: 'Goat Breeder' },
+    { name: 'Dr Ananya Shah', phone: '9000000001', email: 'vet@nashik.gov.in', password, role: 'vet', district: 'Nashik', taluka: 'Niphad', accountType: 'demo', accountActivated: true, designation: 'Government Veterinarian', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'DEMO-VET-01' },
+    { name: 'Nisha Rao', phone: '9000000002', email: 'lab@nashik.gov.in', password, role: 'lab', district: 'Nashik', accountType: 'demo', accountActivated: true, designation: 'Diagnostic Lab Officer', organization: 'District Disease Investigation Lab', employeeId: 'DEMO-LAB-01' },
+    { name: 'Vikram Deshmukh', phone: '9000000003', email: 'officer@nashik.gov.in', password, role: 'district', district: 'Nashik', accountType: 'demo', accountActivated: true, designation: 'District Surveillance Officer', organization: 'District Animal Husbandry Office', employeeId: 'DEMO-DSO-01' },
+    { name: 'Priya Kulkarni', phone: '9000000004', email: 'officer@state.gov.in', password, role: 'state', district: 'Maharashtra', accountType: 'demo', accountActivated: true, designation: 'State Animal Husbandry Officer', organization: 'State Command Center', employeeId: 'DEMO-STATE-01' }
   ]);
 
-  const [farmer, asha, ramesh, vet, lab, districtOfficer, stateOfficer] = users;
+  // 2. Pre-Authorized Multi-District Government Personnel Registry (10 Authorized Officers)
+  const govPersonnel = [
+    // Veterinary Officers (3: Nashik, Pune, Ahmednagar)
+    { name: 'Dr. Nilesh Rathod', phone: '9000000011', email: 'vet.nashik@gov.in', role: 'vet', district: 'Nashik', taluka: 'Niphad', accountType: 'government', designation: 'Senior Veterinary Officer', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'VET-MH-042' },
+    { name: 'Dr. Amit Patil', phone: '9000000012', email: 'vet.pune@gov.in', role: 'vet', district: 'Pune', taluka: 'Junnar', accountType: 'government', designation: 'Senior Veterinary Officer', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'VET-MH-043' },
+    { name: 'Dr. Rohit Shinde', phone: '9000000013', email: 'vet.ahmednagar@gov.in', role: 'vet', district: 'Ahmednagar', taluka: 'Sangamner', accountType: 'government', designation: 'Senior Veterinary Officer', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'VET-MH-044' },
+
+    // Diagnostic Lab Officers (3: Nashik, Pune, Ahmednagar)
+    { name: 'Dr. Snehal Patil', phone: '9000000014', email: 'lab.nashik@gov.in', role: 'lab', district: 'Nashik', accountType: 'government', designation: 'Diagnostic Microbiologist', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'LAB-MH-018' },
+    { name: 'Dr. Priya Joshi', phone: '9000000015', email: 'lab.pune@gov.in', role: 'lab', district: 'Pune', accountType: 'government', designation: 'Diagnostic Microbiologist', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'LAB-MH-019' },
+    { name: 'Dr. Rahul Deshmukh', phone: '9000000016', email: 'lab.ahmednagar@gov.in', role: 'lab', district: 'Ahmednagar', accountType: 'government', designation: 'Diagnostic Microbiologist', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'LAB-MH-020' },
+
+    // District Surveillance Officers (3: Nashik, Pune, Ahmednagar)
+    { name: 'Vikram Deshmukh', phone: '9000000017', email: 'officer.nashik@gov.in', role: 'district', district: 'Nashik', accountType: 'government', designation: 'District Animal Health Officer', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'DSO-MH-001' },
+    { name: 'Rajesh Ghadge', phone: '9000000018', email: 'officer.pune@gov.in', role: 'district', district: 'Pune', accountType: 'government', designation: 'District Animal Health Officer', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'DSO-MH-002' },
+    { name: 'Anjali Kulkarni', phone: '9000000019', email: 'officer.ahmednagar@gov.in', role: 'district', district: 'Ahmednagar', accountType: 'government', designation: 'District Animal Health Officer', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'DSO-MH-003' },
+
+    // State Animal Husbandry Officer (1: Maharashtra)
+    { name: 'Dr. Kavita Sharma', phone: '9000000020', email: 'director.state@gov.in', role: 'state', district: 'Maharashtra', accountType: 'government', designation: 'Additional Director (Epidemiology)', organization: 'Department of Animal Husbandry & Dairying', employeeId: 'SAHO-MH-002' }
+  ];
+
+  // Seed Safety Rule: If officer already exists by email, preserve password and accountActivated status!
+  for (const gov of govPersonnel) {
+    const existing = await User.findOne({ email: gov.email });
+    if (existing) {
+      // Strictly preserve existing password and accountActivated status!
+      // Only update non-auth profile metadata
+      await User.updateOne(
+        { _id: existing._id },
+        {
+          $set: {
+            name: gov.name,
+            phone: gov.phone,
+            role: gov.role,
+            district: gov.district,
+            taluka: gov.taluka,
+            accountType: 'government',
+            designation: gov.designation,
+            organization: gov.organization,
+            employeeId: gov.employeeId
+          }
+        }
+      );
+    } else {
+      await User.create({
+        ...gov,
+        accountActivated: false
+      });
+    }
+  }
+
+  const [farmer, asha, ramesh, vet, lab, districtOfficer, stateOfficer] = demoUsers;
 
   // 2. Districts & Administrative Structure
   const [nashik, pune, ahmednagar] = await District.insertMany([
