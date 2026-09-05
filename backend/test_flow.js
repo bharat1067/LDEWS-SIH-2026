@@ -86,7 +86,7 @@ async function runTests() {
   const authUsers = {};
 
   for (const role of roles) {
-    const u = await User.findOne({ role, active: true });
+    const u = await User.findOne({ role, active: true, accountType: 'demo' });
     assert(!!u, `User found for role '${role}': ${u?.name} (${u?.phone})`);
     const match = await bcrypt.compare('demo123', u.password);
     assert(match, `Password verification for '${role}' user succeeds with 'demo123'`);

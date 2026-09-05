@@ -11,6 +11,13 @@ import {
 import { predict } from './mlService.js';
 import { predictSymptoms } from './mlClient.js';
 import { normalizeSpecies, mapSymptomsToIds, mapDiseaseIdToName } from './mlMappingService.js';
+import {
+  getRequestLanguage,
+  localizeDisease,
+  getLocalizedAdvisory,
+  normalizeHindiSpecies,
+  normalizeHindiSymptoms
+} from './localizationService.js';
 
 // Single backend-controlled escalation decision
 export const getRiskThreshold = () => Number(process.env.RISK_THRESHOLD || 70);
@@ -45,6 +52,8 @@ export const notify = async (user, title, message, caseId = null, type = 'workfl
   });
 };
 
+
+
 export async function processReport(payload, farmer = null) {
   const loc = payload.location || {
     district: payload.district,
@@ -53,6 +62,7 @@ export async function processReport(payload, farmer = null) {
     latitude: payload.latitude,
     longitude: payload.longitude
   };
+
 
   // If coordinates are missing, attempt to enrich from the Village collection
   if (!loc.latitude || !loc.longitude) {
@@ -82,9 +92,16 @@ export async function processReport(payload, farmer = null) {
 
   const district = await District.findOne({ name: loc.district });
 
+  // Detect requested language
+  const reqLang = getRequestLanguage({}, payload);
+
+  // Normalize Hindi species/symptoms if present, while strictly preserving canonical English for ML pipeline
+  const cleanSpecies = normalizeHindiSpecies(payload.animalType);
+  const cleanSymptoms = normalizeHindiSymptoms(payload.symptoms);
+
   // 1. Normalize species and symptoms for ML microservice
-  const normSpecies = normalizeSpecies(payload.animalType);
-  const symptomIds = mapSymptomsToIds(payload.symptoms);
+  const normSpecies = normalizeSpecies(cleanSpecies);
+  const symptomIds = mapSymptomsToIds(cleanSymptoms);
 
   // 2. Attempt Real ML Prediction via FastAPI
   let result = null;
@@ -123,8 +140,8 @@ export async function processReport(payload, farmer = null) {
   } else {
     // 3. Transparent Fallback to existing heuristic ML logic
     const fallbackRes = await predict({
-      symptoms: payload.symptoms,
-      animalType: payload.animalType,
+      symptoms: cleanSymptoms,
+      animalType: cleanSpecies,
       location: loc,
       recentLocalReports: recent,
       districtRisk: district?.riskScore || 0,
@@ -154,13 +171,13 @@ export async function processReport(payload, farmer = null) {
   const report = await FarmerReport.create({
     caseId: `CASE-${Date.now().toString().slice(-8)}-${Math.floor(Math.random() * 90 + 10)}`,
     farmer: farmer?._id || null,
-    farmerName: payload.farmerName || farmer?.name || 'Local Livestock Owner',
+    farmerName: payload.farmerName || farmer?.name || (reqLang === 'hi' ? 'स्थानीय पशुपालक' : 'Local Livestock Owner'),
     phone: payload.phone || farmer?.phone || '',
-    animalType: payload.animalType,
-    symptoms: Array.isArray(payload.symptoms) ? payload.symptoms : (payload.symptoms ? [payload.symptoms] : []),
+    animalType: cleanSpecies || payload.animalType,
+    symptoms: Array.isArray(cleanSymptoms) ? cleanSymptoms : (cleanSymptoms ? [cleanSymptoms] : []),
     location: loc,
     source: payload.source || 'web',
-    language: payload.language || 'English',
+    language: reqLang === 'hi' ? 'Hindi' : (payload.language || 'English'),
     suspectedDisease: result.suspectedDisease,
     triage: result.triage,
     localOutbreakRisk: result.localOutbreakRisk,
@@ -171,12 +188,13 @@ export async function processReport(payload, farmer = null) {
     photoUrl: payload.photoUrl || ''
   });
 
-  // Generate automated advisory
+  // Generate localized automated advisory
+  const locAdvisory = getLocalizedAdvisory(result.suspectedDisease, reqLang);
   const advisory = await Advisory.create({
     case: report._id,
     disease: result.suspectedDisease,
-    title: `Advisory: ${result.suspectedDisease}`,
-    message: advice[result.suspectedDisease] || 'Observe the animal, keep it separated, and contact veterinary services if symptoms worsen.',
+    title: locAdvisory.title,
+    message: locAdvisory.message,
     riskBand: result.triage,
     approved: true
   });
@@ -186,7 +204,8 @@ export async function processReport(payload, farmer = null) {
 
   // Notify farmer if user account is linked
   if (farmer) {
-    await notify(farmer, 'Animal health advisory generated', advisory.message, report._id, 'advisory');
+    const farmerNotifTitle = reqLang === 'hi' ? 'पशु स्वास्थ्य सलाह जारी की गई' : 'Animal health advisory generated';
+    await notify(farmer, farmerNotifTitle, advisory.message, report._id, 'advisory');
   }
 
   // Handle escalation to Vet
@@ -210,8 +229,14 @@ export async function processReport(payload, farmer = null) {
     }
   }
 
+  const localizedDisease = localizeDisease(result.suspectedDisease, reqLang);
+
   return {
-    report,
+    report: {
+      ...report.toObject(),
+      suspectedDiseaseDisplay: localizedDisease,
+      language: reqLang
+    },
     advisory,
     escalated: isEscalated
   };

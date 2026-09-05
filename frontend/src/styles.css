@@ -75,12 +75,42 @@ header {
 }
 
 .lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   background: rgba(255, 255, 255, 0.12);
-  padding: 2px 8px;
+  padding: 2px 4px;
   border-radius: var(--radius-sm);
   font-size: 11px;
-  cursor: pointer;
   border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.lang-btn {
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  line-height: 1.2;
+}
+
+.lang-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.lang-btn.active {
+  background: #ff9933;
+  color: #062b51;
+  font-weight: 700;
+}
+
+.lang-sep {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 10px;
+  user-select: none;
 }
 
 .helpline-pill {
@@ -1022,7 +1052,7 @@ td small {
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   width: 100%;
-  max-width: 480px;
+  max-width: 520px;
   padding: 36px 32px;
   box-shadow: var(--shadow-md);
 }
@@ -1087,6 +1117,102 @@ td small {
 .role-card-opt small {
   color: var(--text-muted);
   font-size: 11px;
+}
+
+.auth-mode-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 20px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 6px;
+}
+
+.auth-mode-tab {
+  flex: 1;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 4px;
+  border: none;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.15s;
+}
+
+.auth-mode-tab.active {
+  background: #ffffff;
+  color: #0b4f8a;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.role-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+
+.role-pill {
+  padding: 6px 12px;
+  border-radius: 20px;
+  border: 1px solid var(--border-color);
+  background: #f8fafc;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.12s;
+}
+
+.role-pill:hover {
+  border-color: var(--gov-navy);
+  color: var(--gov-navy);
+}
+
+.role-pill.active {
+  background: #0b4f8a;
+  color: #ffffff;
+  border-color: #0b4f8a;
+}
+
+.officer-badge-box {
+  background: #f0f7ff;
+  border: 1px solid #cce3f9;
+  border-radius: 6px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.officer-badge-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #0b4f8a;
+  font-weight: 700;
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.officer-badge-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  font-size: 11px;
+  color: #334e68;
+}
+
+.officer-badge-item strong {
+  display: block;
+  color: #627d98;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
 /* --- Mobile Responsiveness --- */

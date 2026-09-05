@@ -12,6 +12,8 @@ const locationSchema = new Schema({
   coordinates: { type: [Number], index: '2d' } // [longitude, latitude] for geo queries
 }, { _id: false });
 
+export const APPROVED_DISTRICTS = ['Nashik', 'Pune', 'Ahmednagar'];
+
 export const User = model('User', new Schema({
   name: { type: String, required: true },
   phone: { type: String, unique: true, sparse: true, index: true },
@@ -25,7 +27,29 @@ export const User = model('User', new Schema({
   },
   district: { type: String },
   taluka: { type: String },
-  active: { type: Boolean, default: true }
+  active: { type: Boolean, default: true },
+  accountType: {
+    type: String,
+    enum: ['demo', 'public', 'government'],
+    default: 'public',
+    index: true
+  },
+  accountActivated: {
+    type: Boolean,
+    default: true
+  },
+  organization: {
+    type: String,
+    default: 'Department of Animal Husbandry & Dairying'
+  },
+  designation: {
+    type: String
+  },
+  employeeId: {
+    type: String,
+    sparse: true,
+    index: true
+  }
 }, { timestamps: true }));
 
 export const District = model('District', new Schema({

@@ -26,10 +26,17 @@ import {
   Building2,
   Calendar,
   X,
-  Activity
+  Activity,
+  Lock,
+  Shield,
+  User,
+  Key,
+  Mail,
+  ChevronLeft
 } from 'lucide-react';
 import './styles.css';
 import API_BASE_URL, { buildApiUrl } from './config/api.js';
+import { LanguageProvider, useLanguage } from './i18n/LanguageContext.jsx';
 
 export { API_BASE_URL, buildApiUrl };
 
@@ -40,6 +47,7 @@ export const api = async (path, o = {}) => {
   const s = JSON.parse(
     localStorage.getItem('ldews-session') || 'null'
   );
+  const currentLang = localStorage.getItem('ldews-language') || 'en';
 
   const isFormData =
     typeof FormData !== 'undefined' &&
@@ -52,6 +60,8 @@ export const api = async (path, o = {}) => {
     ...(s?.token ? {
       Authorization: `Bearer ${s.token}`
     } : {}),
+    'X-LDEWS-Language': currentLang,
+    'Accept-Language': currentLang,
     ...(o.headers || {})
   };
 
@@ -106,14 +116,50 @@ function Load({ children, error }) {
   return children;
 }
 
+function LanguageSelector() {
+  const { language, setLanguage, t } = useLanguage();
+  return (
+    <div className="lang-switch" role="group" aria-label="Language Selector">
+      <button
+        type="button"
+        className={`lang-btn ${language === 'en' ? 'active' : ''}`}
+        onClick={() => setLanguage('en')}
+      >
+        English
+      </button>
+      <span className="lang-sep">|</span>
+      <button
+        type="button"
+        className={`lang-btn ${language === 'hi' ? 'active' : ''}`}
+        onClick={() => setLanguage('hi')}
+      >
+        हिंदी
+      </button>
+      <span className="lang-sep">|</span>
+      <button
+        type="button"
+        className={`lang-btn ${language === 'mr' ? 'active' : ''}`}
+        onClick={() => {
+          setLanguage('mr');
+          alert(t('govline.marathiComingSoon', 'Marathi language support will be available soon in the next release.'));
+        }}
+        title="मराठी (लवकरच उपलब्ध / Coming Soon)"
+      >
+        मराठी
+      </button>
+    </div>
+  );
+}
+
 function Badge({ children }) {
+  const { translateStatus } = useLanguage();
   const x = String(children || '');
   let color = 'blue';
   if (/Confirmed|Escalated|Critical|High/i.test(x)) color = 'red';
   else if (/Monitoring|Testing|Pending|Prioritized|Moderate/i.test(x)) color = 'amber';
   else if (/Verified|Closed|Negative|Approved/i.test(x)) color = 'green';
   else if (/Received|Normal/i.test(x)) color = 'slate';
-  return <span className={`badge ${color}`}>{x}</span>;
+  return <span className={`badge ${color}`}>{translateStatus ? translateStatus(x) : x}</span>;
 }
 
 function Modal({ open, title, onClose, children }) {
@@ -151,33 +197,34 @@ function useLoad(url) {
 // Global Shell
 function Shell({ children }) {
   const { user, logout } = useAuth();
+  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const [showNotif, setShowNotif] = useState(false);
   const { d: notifs } = useLoad('/notifications');
 
   const n = {
     farmer: [
-      ['Farmer Portal', '/farmer', LayoutDashboard],
-      ['Report Animal Problem', '/farmer/report', ClipboardPlus],
-      ['My Reports & Status', '/farmer/reports', MapPinned]
+      [t('nav.farmerHome', 'Farmer Assistance Home'), '/farmer', LayoutDashboard],
+      [t('nav.reportProblem', 'Report Animal Illness'), '/farmer/report', ClipboardPlus],
+      [t('nav.myReports', 'My Health Reports'), '/farmer/reports', MapPinned]
     ],
     vet: [
-      ['Investigation Queue', '/vet', Stethoscope],
+      [t('nav.vetQueue', 'Investigation Queue'), '/vet', Stethoscope],
       ['Assigned Case Register', '/vet/cases', LayoutDashboard]
     ],
     lab: [
-      ['Diagnostic Work Queue', '/lab', FlaskConical],
+      [t('nav.labQueue', 'Diagnostic Work Queue'), '/lab', FlaskConical],
       ['Sample Register', '/lab/samples', LayoutDashboard]
     ],
     district: [
-      ['Surveillance & Response', '/district/overview', LayoutDashboard],
-      ['District Case Register', '/district/cases', ClipboardPlus],
-      ['Active Cluster Alerts', '/district/clusters', MapPinned]
+      [t('nav.districtOverview', 'Surveillance & Response'), '/district/overview', LayoutDashboard],
+      [t('nav.districtCases', 'District Case Register'), '/district/cases', ClipboardPlus],
+      [t('nav.districtClusters', 'Active Cluster Alerts'), '/district/clusters', MapPinned]
     ],
     state: [
-      ['Strategic Priority Matrix', '/state/overview', LayoutDashboard],
-      ['District Risk Ranking', '/state/districts', MapPinned],
-      ['District Action Requests', '/state/requests', ShieldAlert]
+      [t('nav.stateOverview', 'Strategic Priority Matrix'), '/state/overview', LayoutDashboard],
+      [t('nav.stateDistricts', 'District Risk Ranking'), '/state/districts', MapPinned],
+      [t('nav.stateRequests', 'District Action Requests'), '/state/requests', ShieldAlert]
     ]
   }[user.role] || [];
 
@@ -186,12 +233,12 @@ function Shell({ children }) {
       <header>
         <div className="govline">
           <div className="govline-left">
-            <span>भारत सरकार | Government of India</span>
-            <span>पशुपालन और डेयरी विभाग | Department of Animal Husbandry & Dairying</span>
+            <span>{t('govline.left1', 'भारत सरकार | Government of India')}</span>
+            <span>{t('govline.left2', 'पशुपालन और डेयरी विभाग | Department of Animal Husbandry & Dairying')}</span>
           </div>
           <div className="govline-right">
-            <span className="lang-switch" onClick={() => alert('Language translation (Hindi/Marathi) is a work-in-progress module.')} style={{ cursor: 'pointer' }}>English | हिंदी | मराठी</span>
-            <span className="helpline-pill"><Phone size={11} /> Helpline: 1962</span>
+            <LanguageSelector />
+            <span className="helpline-pill"><Phone size={11} /> {t('govline.helpline', 'Helpline: 1962')}</span>
           </div>
         </div>
 
@@ -201,15 +248,15 @@ function Shell({ children }) {
           </button>
           <div className="seal">GOI</div>
           <div className="brand-text">
-            <b>Livestock Disease Early Warning System (LDEWS)</b>
-            <small>National Animal Disease Surveillance & Outbreak Response Portal</small>
+            <b>{t('brand.portalTitle', 'Livestock Disease Early Warning System (LDEWS)')}</b>
+            <small>{t('brand.portalSubtitle', 'National Animal Disease Surveillance & Outbreak Response Portal')}</small>
           </div>
 
           <div className="header-actions">
             <button
               className="notif-btn"
               onClick={() => setShowNotif(!showNotif)}
-              title="Notifications"
+              title={t('nav.notifications', 'Notifications')}
             >
               <Bell size={18} />
               {notifs && notifs.length > 0 && (
@@ -220,8 +267,8 @@ function Shell({ children }) {
             {showNotif && (
               <div className="notif-dropdown">
                 <div className="notif-header">
-                  <h4>Surveillance Notifications</h4>
-                  <button className="link" onClick={() => setShowNotif(false)}>Close</button>
+                  <h4>{t('nav.notifications', 'Surveillance Notifications')}</h4>
+                  <button className="link" onClick={() => setShowNotif(false)}>{t('common.close', 'Close')}</button>
                 </div>
                 <div className="notif-list">
                   {notifs && notifs.length > 0 ? (
@@ -233,7 +280,7 @@ function Shell({ children }) {
                       </div>
                     ))
                   ) : (
-                    <div className="empty">No active notifications.</div>
+                    <div className="empty">{t('nav.noNotifs', 'No active notifications.')}</div>
                   )}
                 </div>
               </div>
@@ -243,19 +290,19 @@ function Shell({ children }) {
               <span className="avatar">{(user.name || 'O')[0]}</span>
               <div className="profile-info">
                 <strong>{user.name}</strong>
-                <small>{roles[user.role]} {user.district ? `(${user.district})` : ''}</small>
+                <small>{t(`roles.${user.role}`, roles[user.role])} {user.district ? `(${user.district})` : ''}</small>
               </div>
             </div>
 
-            <button className="logout-btn" onClick={logout} title="Sign out of portal">
-              <LogOut size={15} /> Sign out
+            <button className="logout-btn" onClick={logout} title={t('nav.signOut', 'Sign out')}>
+              <LogOut size={15} /> {t('nav.signOut', 'Sign out')}
             </button>
           </div>
         </div>
       </header>
 
       <aside className={open ? 'open' : ''}>
-        <div className="side-title">Official Workspace</div>
+        <div className="side-title">{t('nav.workspace', 'Official Workspace')}</div>
         {n.map(([title, to, Icon]) => (
           <NavLink
             to={to}
@@ -269,8 +316,8 @@ function Shell({ children }) {
         ))}
 
         <div className="side-footer">
-          <ShieldAlert size={16} /> <b>National Toll-Free 1962</b>
-          <span>24x7 Animal Health Emergency & Tele-Veterinary Response</span>
+          <ShieldAlert size={16} /> <b>{t('brand.tollFreeTitle', 'National Toll-Free 1962')}</b>
+          <span>{t('brand.tollFreeDesc', '24x7 Animal Health Emergency & Tele-Veterinary Response')}</span>
         </div>
       </aside>
 
@@ -278,7 +325,7 @@ function Shell({ children }) {
 
       <main>
         <div className="crumb">
-          Portal Home <ChevronRight size={13} /> {roles[user.role]}
+          {t('nav.workspace', 'Portal Home')} <ChevronRight size={13} /> {t(`roles.${user.role}`, roles[user.role])}
         </div>
         {children}
       </main>
@@ -313,13 +360,14 @@ function Metric({ label, value, note, riskClass }) {
 
 // Visual Stepper for Farmer and Vet cases
 function CaseTimeline({ status }) {
+  const { translateStatus } = useLanguage();
   const steps = [
-    { label: 'Reported', key: 'Reported' },
-    { label: 'Triage / Monitoring', key: 'Monitoring' },
-    { label: 'Vet Escalated', key: 'Escalated to Vet' },
-    { label: 'Vet Verified', key: 'Vet Verified' },
-    { label: 'Sample Testing', key: 'Lab Testing' },
-    { label: 'Confirmed / Closed', key: 'Confirmed' }
+    { label: translateStatus('Reported'), key: 'Reported' },
+    { label: translateStatus('Monitoring'), key: 'Monitoring' },
+    { label: translateStatus('Escalated to Vet'), key: 'Escalated to Vet' },
+    { label: translateStatus('Vet Verified'), key: 'Vet Verified' },
+    { label: translateStatus('Lab Testing'), key: 'Lab Testing' },
+    { label: translateStatus('Confirmed'), key: 'Confirmed' }
   ];
 
   const statusOrder = [
@@ -360,6 +408,7 @@ function CaseTimeline({ status }) {
 
 // Case List Component
 function Cases({ cases = [], open, isVet = false }) {
+  const { t, translateDisease, translateSpecies } = useLanguage();
   const [query, setQuery] = useState('');
   const list = cases.filter(c => JSON.stringify(c).toLowerCase().includes(query.toLowerCase()));
 
@@ -368,7 +417,7 @@ function Cases({ cases = [], open, isVet = false }) {
       <div className="filter">
         <Search size={16} />
         <input
-          placeholder="Filter by Case ID, village, animal or disease suspicion..."
+          placeholder={t('common.filterPlaceholder', 'Filter by Case ID, village, animal or disease suspicion...')}
           value={query}
           onChange={e => setQuery(e.target.value)}
         />
@@ -377,13 +426,13 @@ function Cases({ cases = [], open, isVet = false }) {
         <table>
           <thead>
             <tr>
-              <th>Case ID</th>
-              <th>Location & Farmer</th>
-              <th>Reported Symptoms</th>
-              <th>Suspected Condition</th>
-              <th>Automated Risk</th>
-              <th>Status</th>
-              <th>Action</th>
+              <th>{t('common.caseId', 'Case ID')}</th>
+              <th>{t('common.locationAndFarmer', 'Location & Farmer')}</th>
+              <th>{t('common.reportedSymptoms', 'Reported Symptoms')}</th>
+              <th>{t('farmer.suspectedCondition', 'Suspected Condition')}</th>
+              <th>{t('farmer.automatedRisk', 'Automated Risk')}</th>
+              <th>{t('common.status', 'Status')}</th>
+              <th>{t('common.action', 'Action')}</th>
             </tr>
           </thead>
           <tbody>
@@ -400,11 +449,11 @@ function Cases({ cases = [], open, isVet = false }) {
                     <small>{c.farmerName || 'Owner'} {c.phone ? `(${c.phone})` : ''}</small>
                   </td>
                   <td>
-                    <span>{c.animalType}</span>
+                    <span>{translateSpecies(c.animalType)}</span>
                     <small>{Array.isArray(c.symptoms) ? c.symptoms.join(', ') : (c.symptoms || '—')}</small>
                   </td>
                   <td>
-                    <b>{c.suspectedDisease || 'General Infection'}</b>
+                    <b>{c.suspectedDiseaseDisplay || translateDisease(c.suspectedDisease) || 'General Infection'}</b>
                     <small>Automated Triage Tier: {c.triage || 'Standard'}</small>
                   </td>
                   <td>
@@ -415,7 +464,7 @@ function Cases({ cases = [], open, isVet = false }) {
                   <td><Badge>{c.status}</Badge></td>
                   <td>
                     <button className="primary" style={{ padding: '6px 12px', fontSize: '12px' }} onClick={() => open(c)}>
-                      Open
+                      {t('common.open', 'Open')}
                     </button>
                   </td>
                 </tr>
@@ -424,7 +473,7 @@ function Cases({ cases = [], open, isVet = false }) {
           </tbody>
         </table>
       </div>
-      {!list.length && <div className="empty">No matching operational records found.</div>}
+      {!list.length && <div className="empty">{t('common.noRecords', 'No matching operational records found.')}</div>}
     </>
   );
 }
@@ -435,12 +484,13 @@ function Cases({ cases = [], open, isVet = false }) {
 function FarmerHome() {
   const { d, e } = useLoad('/reports/my');
   const nav = useNavigate();
+  const { t, translateDisease } = useLanguage();
   const latest = d?.[0];
 
   return (
     <Page
-      title="Livestock Owner Health Assistance Portal"
-      subtitle="Report animal illnesses, receive official precautionary advisories, and track veterinary response"
+      title={t('farmer.homeTitle', 'Livestock Owner Health Assistance Portal')}
+      subtitle={t('farmer.homeSubtitle', 'Report animal illnesses, receive official precautionary advisories, and track veterinary response')}
     >
       <Load error={e}>
         {d && (
@@ -449,9 +499,9 @@ function FarmerHome() {
             <div className="panel" style={{ background: 'linear-gradient(135deg, #062b51 0%, #0b4f8a 100%)', color: '#fff', padding: '24px 28px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
                 <div>
-                  <h2 style={{ color: '#fff', fontSize: '20px', marginBottom: '6px' }}>Is your cattle or sheep showing signs of illness?</h2>
+                  <h2 style={{ color: '#fff', fontSize: '20px', marginBottom: '6px' }}>{t('farmer.bannerTitle', 'Is your cattle or sheep showing signs of illness?')}</h2>
                   <p style={{ color: '#eaf3fb', margin: 0, fontSize: '13px' }}>
-                    Submit an immediate report to trigger veterinary assessment and receive approved protective measures.
+                    {t('farmer.bannerDesc', 'Submit an immediate report to trigger veterinary assessment and receive approved protective measures.')}
                   </p>
                 </div>
                 <button
@@ -459,30 +509,30 @@ function FarmerHome() {
                   onClick={() => nav('/farmer/report')}
                   style={{ background: '#ff9933', color: '#062b51', borderColor: '#e68524', fontWeight: '700', padding: '12px 22px', fontSize: '14px' }}
                 >
-                  <ClipboardPlus size={18} /> Report Animal Health Problem
+                  <ClipboardPlus size={18} /> {t('farmer.bannerBtn', 'Report Animal Health Problem')}
                 </button>
               </div>
             </div>
 
             <div className="metrics">
-              <Metric label="My Total Reports" value={d.length} note="Submitted cases" />
-              <Metric label="Under Monitoring" value={d.filter(x => x.status === 'Monitoring').length} note="Precautionary observation" />
-              <Metric label="Escalated to Vet" value={d.filter(x => x.status === 'Escalated to Vet' || x.status === 'Vet Verified').length} note="Assigned to Government Vet" />
-              <Metric label="Confirmed / Resolved" value={d.filter(x => ['Confirmed', 'Closed', 'Negative'].includes(x.status)).length} note="Lab tested or closed" />
+              <Metric label={t('farmer.totalReports', 'My Total Reports')} value={d.length} note="Submitted cases" />
+              <Metric label={t('farmer.underMonitoring', 'Under Monitoring')} value={d.filter(x => x.status === 'Monitoring').length} note="Precautionary observation" />
+              <Metric label={t('farmer.escalatedToVet', 'Escalated to Vet')} value={d.filter(x => x.status === 'Escalated to Vet' || x.status === 'Vet Verified').length} note="Assigned to Government Vet" />
+              <Metric label={t('farmer.confirmedResolved', 'Confirmed / Resolved')} value={d.filter(x => ['Confirmed', 'Closed', 'Negative'].includes(x.status)).length} note="Lab tested or closed" />
             </div>
 
             <div className="two-col">
               <section className="panel">
                 <div className="panel-title">
-                  <h2>Latest Government Precautionary Advisory</h2>
-                  <Badge>{latest?.advisory?.disease || 'General'}</Badge>
+                  <h2>{t('farmer.latestAdvisoryTitle', 'Latest Government Precautionary Advisory')}</h2>
+                  <Badge>{latest?.advisory?.disease ? translateDisease(latest.advisory.disease) : 'General'}</Badge>
                 </div>
                 {latest?.advisory ? (
                   <>
                     <b style={{ color: '#0b4f8a', fontSize: '15px' }}>{latest.advisory.title}</b>
                     <p style={{ marginTop: '8px', lineHeight: '1.6' }}>{latest.advisory.message}</p>
                     <div className="notice" style={{ marginTop: '14px' }}>
-                      <b>Important Farmer Directive:</b> Separate sick livestock from healthy animals, avoid movement to village markets, and keep water troughs clean.
+                      <b>{t('farmer.directiveTitle', 'Important Farmer Directive:')}</b> {t('farmer.directiveText', 'Separate sick livestock from healthy animals, avoid movement to village markets, and keep water troughs clean.')}
                     </div>
                   </>
                 ) : (
@@ -492,28 +542,26 @@ function FarmerHome() {
 
               <section className="panel" style={{ borderTop: '3px solid #ff9933' }}>
                 <div className="panel-title">
-                  <h2><Phone size={18} color="#b42318" /> Report Through Toll-Free IVR (1962)</h2>
+                  <h2><Phone size={18} color="#b42318" /> {t('farmer.ivrTitle', 'Report Through Toll-Free IVR (1962)')}</h2>
                 </div>
                 <p style={{ fontSize: '13px', color: '#486581' }}>
-                  Livestock owners without internet access can dial <b>1962</b> to register disease reports via assisted phone call.
+                  {t('farmer.ivrDesc', 'Livestock owners without internet access can dial 1962 to register disease reports via assisted phone call.')}
                 </p>
                 <ol style={{ fontSize: '12px', paddingLeft: '18px', color: '#334e68', lineHeight: '1.8' }}>
-                  <li>Dial 1962 (Toll-free Animal Helpline)</li>
-                  <li>Select preferred language (Hindi / Marathi)</li>
-                  <li>State animal type and observed symptoms</li>
-                  <li>Confirm district and village location</li>
-                  <li>Receive official Case Tracking ID via SMS</li>
+                  {(t('farmer.ivrSteps') || []).map((step, idx) => (
+                    <li key={idx}>{step}</li>
+                  ))}
                 </ol>
                 <button className="secondary" onClick={() => nav('/farmer/report#ivr')} style={{ width: '100%', marginTop: '8px' }}>
-                  Launch Interactive IVR Simulator
+                  {t('farmer.ivrBtn', 'Launch Interactive IVR Simulator')}
                 </button>
               </section>
             </div>
 
             <section className="panel">
               <div className="panel-title">
-                <h2>My Active Animal Health Reports</h2>
-                <button className="link" onClick={() => nav('/farmer/reports')}>View All History</button>
+                <h2>{t('farmer.activeReports', 'My Active Animal Health Reports')}</h2>
+                <button className="link" onClick={() => nav('/farmer/reports')}>{t('farmer.viewAllHistory', 'View All History')}</button>
               </div>
               <Cases cases={d.slice(0, 4)} open={() => nav('/farmer/reports')} />
             </section>
@@ -527,6 +575,7 @@ function FarmerHome() {
 function Report() {
   const nav = useNavigate();
   const { user } = useAuth();
+  const { t, language, translateDisease, translateSpecies, symptomPresets } = useLanguage();
   const [f, setF] = useState({
     animalType: 'Cattle',
     symptoms: 'Mouth blisters, excessive drooling, lameness',
@@ -541,16 +590,6 @@ function Report() {
   const [submitting, setSubmitting] = useState(false);
   const [submittedCase, setSubmittedCase] = useState(null);
   const [err, setErr] = useState('');
-
-  const symptomPresets = [
-    'Mouth blisters',
-    'Excessive drooling',
-    'Sudden lameness',
-    'High fever',
-    'Skin nodules',
-    'Nasal discharge',
-    'Diarrhea'
-  ];
 
   const addPreset = p => {
     const current = f.symptoms.split(',').map(x => x.trim()).filter(Boolean);
@@ -599,6 +638,7 @@ function Report() {
         formData.append('taluka', f.taluka);
         formData.append('village', f.village);
         formData.append('source', f.source || 'web');
+        formData.append('language', language === 'hi' ? 'Hindi' : 'English');
         formData.append('photo', photo);
 
         res = await api('/reports', {
@@ -612,12 +652,13 @@ function Report() {
             symptoms: parsed,
             farmerName: user.name,
             phone: user.phone || '9876543210',
-            language: 'Hindi'
+            language: language === 'hi' ? 'Hindi' : 'English'
           }
           : {
             ...f,
             symptoms: parsed,
-            location: { district: f.district, taluka: f.taluka, village: f.village }
+            location: { district: f.district, taluka: f.taluka, village: f.village },
+            language: language === 'hi' ? 'Hindi' : 'English'
           };
 
         res = await api(iv ? '/ivr/report' : '/reports', {
@@ -636,32 +677,34 @@ function Report() {
 
   return (
     <Page
-      title="Report Animal Health Problem"
-      subtitle="Register an official animal illness report to initiate triage, precautionary advisories, and veterinary escalation"
+      title={t('farmer.reportFormTitle', 'Report Animal Health Problem')}
+      subtitle={t('farmer.reportFormSubtitle', 'Register an official animal illness report to initiate triage, precautionary advisories, and veterinary escalation')}
     >
       {submittedCase ? (
         <div className="panel" style={{ borderTop: '4px solid #027a48', maxWidth: '800px', margin: '0 auto' }}>
           <div style={{ textAlign: 'center', padding: '16px 0 20px' }}>
             <CheckCircle2 size={44} color="#027a48" style={{ margin: '0 auto 12px' }} />
-            <h2 style={{ fontSize: '22px', color: '#062b51', marginBottom: '4px' }}>Animal Health Report Registered</h2>
+            <h2 style={{ fontSize: '22px', color: '#062b51', marginBottom: '4px' }}>
+              {t('farmer.reportSuccessTitle', 'Animal Health Report Registered')}
+            </h2>
             <p style={{ color: '#627d98', fontSize: '13px' }}>
-              Official Tracking Reference: <strong style={{ color: '#102a43' }}>{submittedCase.case?.caseId}</strong>
+              {t('farmer.trackingRef', 'Official Tracking Reference:')} <strong style={{ color: '#102a43' }}>{submittedCase.case?.caseId}</strong>
             </p>
           </div>
 
           <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '4px', marginBottom: '18px', border: '1px solid #d9e2ec' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
               <div>
-                <small style={{ color: '#627d98', display: 'block' }}>Assigned Status</small>
+                <small style={{ color: '#627d98', display: 'block' }}>{t('farmer.assignedStatus', 'Assigned Status')}</small>
                 <Badge>{submittedCase.case?.status}</Badge>
               </div>
               <div>
-                <small style={{ color: '#627d98', display: 'block' }}>Automated Risk Triage</small>
+                <small style={{ color: '#627d98', display: 'block' }}>{t('farmer.automatedRisk', 'Automated Risk Triage')}</small>
                 <strong>{submittedCase.case?.localOutbreakRisk}% ({submittedCase.case?.triage?.toUpperCase()})</strong>
               </div>
               <div>
-                <small style={{ color: '#627d98', display: 'block' }}>Suspected Condition</small>
-                <strong>{submittedCase.case?.suspectedDisease}</strong>
+                <small style={{ color: '#627d98', display: 'block' }}>{t('farmer.suspectedCondition', 'Suspected Condition')}</small>
+                <strong>{submittedCase.case?.suspectedDiseaseDisplay || translateDisease(submittedCase.case?.suspectedDisease)}</strong>
               </div>
             </div>
           </div>
@@ -670,7 +713,7 @@ function Report() {
           <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '4px', marginBottom: '18px', border: '1px solid #d9e2ec' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #e2e8f0', paddingBottom: '8px' }}>
               <h3 style={{ fontSize: '13px', margin: 0, color: '#062b51', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                Automated Symptom Analysis
+                {t('farmer.automatedSymptomAnalysis', 'Automated Symptom Analysis')}
               </h3>
               <span className={`badge ${submittedCase.case?.mlSource === 'fastapi' ? 'green' : 'amber'}`}>
                 {submittedCase.case?.mlSource === 'fastapi' ? 'FastAPI Voting Ensemble' : 'Fallback Assessment'}
@@ -679,11 +722,11 @@ function Report() {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px', fontSize: '13px' }}>
               <div>
-                <small style={{ color: '#627d98', display: 'block' }}>Predicted Condition</small>
-                <strong style={{ color: '#0b4f8a' }}>{submittedCase.case?.suspectedDisease}</strong>
+                <small style={{ color: '#627d98', display: 'block' }}>{t('farmer.suspectedCondition', 'Predicted Condition')}</small>
+                <strong style={{ color: '#0b4f8a' }}>{submittedCase.case?.suspectedDiseaseDisplay || translateDisease(submittedCase.case?.suspectedDisease)}</strong>
               </div>
               <div>
-                <small style={{ color: '#627d98', display: 'block' }}>Confidence Score</small>
+                <small style={{ color: '#627d98', display: 'block' }}>{t('farmer.confidenceScore', 'Confidence Score')}</small>
                 <strong>
                   {submittedCase.case?.mlPrediction?.confidence
                     ? `${(submittedCase.case.mlPrediction.confidence * 100).toFixed(1)}%`
@@ -691,7 +734,7 @@ function Report() {
                 </strong>
               </div>
               <div>
-                <small style={{ color: '#627d98', display: 'block' }}>Model Source</small>
+                <small style={{ color: '#627d98', display: 'block' }}>{t('farmer.modelSource', 'Model Source')}</small>
                 <span>
                   {submittedCase.case?.mlSource === 'fastapi' ? 'FastAPI Voting Ensemble' : 'Fallback Assessment'}
                 </span>
@@ -728,12 +771,12 @@ function Report() {
           )}
 
           <div className="notice" style={{ background: '#eff8ff', marginBottom: '18px' }}>
-            <b>Immediate Precautionary Advisory:</b>
+            <b>{t('farmer.precautionaryAdvisoryIssued', 'Immediate Precautionary Advisory')}:</b>
             <p style={{ margin: '6px 0 0', lineHeight: '1.6' }}>{submittedCase.advisory?.message}</p>
           </div>
 
           <div className="warning-banner">
-            <b>What Happens Next:</b>
+            <b>{t('farmer.protectiveActionPlan', 'What Happens Next:')}</b>
             {submittedCase.escalated ? (
               <p style={{ margin: '4px 0 0' }}>
                 Because the automated risk assessment is 70% or higher, this case has been <strong>automatically escalated to the assigned Government Veterinarian</strong> for physical field verification. You will be contacted for an inspection visit.
@@ -747,10 +790,10 @@ function Report() {
 
           <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '24px' }}>
             <button className="primary" onClick={() => nav('/farmer/reports')}>
-              View My Reports & Tracking Timeline
+              {t('farmer.viewMyReportsBtn', 'View My Reports & Tracking Timeline')}
             </button>
             <button className="secondary" onClick={() => setSubmittedCase(null)}>
-              Submit Another Report
+              {t('farmer.submitAnotherBtn', 'Submit Another Report')}
             </button>
           </div>
         </div>
@@ -758,16 +801,18 @@ function Report() {
         <div className="two-col">
           <form className="panel form" onSubmit={e => submit(e, false)}>
             <div className="panel-title">
-              <h2>Livestock Information & Symptoms</h2>
+              <h2>{t('farmer.reportFormTitle', 'Livestock Information & Symptoms')}</h2>
               <span className="hint">Fields marked are mandatory</span>
             </div>
 
             <div className="form-grid">
               <label>
-                Animal Type *
+                {t('farmer.animalTypeLabel', 'Animal Type *')}
                 <select value={f.animalType} onChange={e => setF({ ...f, animalType: e.target.value })}>
                   {['Cattle', 'Buffalo', 'Goat', 'Sheep', 'Poultry', 'Other'].map(x => (
-                    <option key={x} value={x}>{x}</option>
+                    <option key={x} value={x}>
+                      {translateSpecies(x)}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -782,27 +827,27 @@ function Report() {
               </label>
 
               <label>
-                District *
+                {t('farmer.districtFixedLabel', 'District *')}
                 <input value={f.district} onChange={e => setF({ ...f, district: e.target.value })} required />
               </label>
 
               <label>
-                Taluka *
+                {t('farmer.talukaLabel', 'Taluka *')}
                 <input value={f.taluka} onChange={e => setF({ ...f, taluka: e.target.value })} required />
               </label>
 
               <label style={{ gridColumn: 'span 2' }}>
-                Village / Locality *
+                {t('farmer.villageLabel', 'Village / Locality *')}
                 <input value={f.village} onChange={e => setF({ ...f, village: e.target.value })} required />
               </label>
             </div>
 
             <label style={{ marginTop: '14px' }}>
-              Observed Symptoms (Comma separated or pick below) *
+              {t('farmer.symptomsLabel', 'Observed Symptoms (Comma separated or pick below) *')}
               <textarea
                 value={f.symptoms}
                 onChange={e => setF({ ...f, symptoms: e.target.value })}
-                placeholder="Describe observed physical signs (e.g. mouth blisters, drooling, high fever, skin nodules)..."
+                placeholder={t('farmer.symptomsHint', 'Describe observed physical signs (e.g. mouth blisters, drooling, high fever, skin nodules)...')}
                 required
               />
             </label>
@@ -810,14 +855,14 @@ function Report() {
             <div>
               <span className="hint" style={{ fontWeight: 600 }}>Quick Select Common Symptoms:</span>
               <div className="chips">
-                {symptomPresets.map(p => (
+                {(symptomPresets || []).map(p => (
                   <button
                     type="button"
-                    key={p}
+                    key={p.key}
                     className="chip"
-                    onClick={() => addPreset(p)}
+                    onClick={() => addPreset(p.key)}
                   >
-                    + {p}
+                    + {p.display}
                   </button>
                 ))}
               </div>
@@ -826,9 +871,9 @@ function Report() {
             {/* Optional Animal Photo Upload */}
             <div style={{ marginTop: '16px', borderTop: '1px dashed #d9e2ec', paddingTop: '14px' }}>
               <label style={{ fontWeight: 600, fontSize: '13px' }}>
-                Upload Animal Photo (Optional)
+                {t('farmer.photoLabel', 'Upload Animal Photo (Optional)')}
                 <span className="hint" style={{ display: 'block', fontWeight: 'normal', marginTop: '3px' }}>
-                  Provide an optional photo for AI visual screening (e.g. skin nodules or lesions for Lumpy Skin Disease detection). Supported: JPG, JPEG, PNG (Max 5MB).
+                  {t('farmer.photoHint', 'Provide an optional photo for AI visual screening (e.g. skin nodules or lesions for Lumpy Skin Disease detection). Supported: JPG, JPEG, PNG (Max 5MB).')}
                 </span>
                 <input
                   type="file"
@@ -854,7 +899,7 @@ function Report() {
 
             <div style={{ marginTop: '24px' }}>
               <button className="primary" type="submit" disabled={submitting}>
-                {submitting ? 'Registering Report...' : 'Submit Animal Health Report'}
+                {submitting ? t('farmer.submittingReportBtn', 'Registering Report...') : t('farmer.submitReportBtn', 'Submit Animal Health Report')}
               </button>
             </div>
 
@@ -864,10 +909,10 @@ function Report() {
           <div>
             <section className="panel" id="ivr" style={{ borderTop: '3px solid #ff9933' }}>
               <div className="panel-title">
-                <h2><Phone size={18} color="#b42318" /> Interactive IVR Simulation (1962)</h2>
+                <h2><Phone size={18} color="#b42318" /> {t('farmer.ivrTitle', 'Report Through Toll-Free IVR (1962)')}</h2>
               </div>
               <p style={{ fontSize: '13px', color: '#486581' }}>
-                Simulate the automated Interactive Voice Response journey for phone-assisted callers:
+                {t('farmer.ivrDesc', 'Livestock owners without internet access can dial 1962 to register disease reports via assisted phone call.')}
               </p>
 
               <div style={{ background: '#f8fafc', padding: '14px', borderRadius: '4px', border: '1px solid #d9e2ec', marginBottom: '16px' }}>
@@ -887,7 +932,7 @@ function Report() {
                 disabled={submitting}
                 style={{ width: '100%', background: '#ff9933', borderColor: '#e68524', color: '#062b51', fontWeight: 700 }}
               >
-                {submitting ? 'Connecting IVR...' : 'Execute IVR Report Simulation'}
+                {submitting ? 'Connecting IVR...' : t('farmer.ivrBtn', 'Execute IVR Report Simulation')}
               </button>
               <small style={{ color: '#627d98', display: 'block', marginTop: '8px', textAlign: 'center' }}>
                 Submits real FarmerReport with source = "ivr"
@@ -909,11 +954,12 @@ function Report() {
 
 function FarmerReports() {
   const { d, e } = useLoad('/reports/my');
+  const { t, translateDisease, translateSpecies } = useLanguage();
   const [selectedCase, setSelectedCase] = useState(null);
 
   return (
     <Page
-      title="My Submitted Health Reports"
+      title={t('nav.myReports', 'My Health Reports')}
       subtitle="Track the real-time operational status, veterinary verification, and laboratory results for your livestock"
     >
       <Load error={e}>
@@ -931,7 +977,7 @@ function FarmerReports() {
               <section className="panel" style={{ borderTop: '4px solid #0b4f8a' }}>
                 <div className="panel-title">
                   <h2>Case Investigation Timeline: {selectedCase.caseId}</h2>
-                  <button className="link" onClick={() => setSelectedCase(null)}>Close Details</button>
+                  <button className="link" onClick={() => setSelectedCase(null)}>{t('common.close', 'Close')}</button>
                 </div>
 
                 <CaseTimeline status={selectedCase.status} />
@@ -940,16 +986,17 @@ function FarmerReports() {
                   <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '4px', border: '1px solid #d9e2ec' }}>
                     <h3 style={{ fontSize: '14px', margin: '0 0 10px', color: '#062b51' }}>Case Summary</h3>
                     <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '8px', fontSize: '13px' }}>
-                      <span style={{ color: '#627d98' }}>Animal:</span> <b>{selectedCase.animalType}</b>
+                      <span style={{ color: '#627d98' }}>Animal:</span> <b>{translateSpecies(selectedCase.animalType)}</b>
                       <span style={{ color: '#627d98' }}>Location:</span> <span>{selectedCase.location?.village}, {selectedCase.location?.district}</span>
                       <span style={{ color: '#627d98' }}>Symptoms:</span> <span>{Array.isArray(selectedCase.symptoms) ? selectedCase.symptoms.join(', ') : selectedCase.symptoms}</span>
                       <span style={{ color: '#627d98' }}>Report Source:</span> <span>{selectedCase.source?.toUpperCase()}</span>
+                      <span style={{ color: '#627d98' }}>{t('farmer.suspectedCondition', 'Suspected Condition')}:</span> <b>{selectedCase.suspectedDiseaseDisplay || translateDisease(selectedCase.suspectedDisease)}</b>
                       <span style={{ color: '#627d98' }}>Current Status:</span> <div><Badge>{selectedCase.status}</Badge></div>
                     </div>
                   </div>
 
                   <div style={{ background: '#eff8ff', padding: '16px', borderRadius: '4px', border: '1px solid #b2ddff' }}>
-                    <h3 style={{ fontSize: '14px', margin: '0 0 10px', color: '#0b4f8a' }}>Official Precautionary Advisory</h3>
+                    <h3 style={{ fontSize: '14px', margin: '0 0 10px', color: '#0b4f8a' }}>{t('farmer.latestAdvisoryTitle', 'Official Precautionary Advisory')}</h3>
                     <p style={{ margin: 0, fontSize: '13px', lineHeight: '1.6' }}>
                       {selectedCase.advisory?.message || 'Isolate affected animals and follow veterinary directives.'}
                     </p>
@@ -1811,7 +1858,7 @@ function ViewportClusterLayer() {
     const minLat = bounds.getSouth();
     const maxLng = bounds.getEast();
     const maxLat = bounds.getNorth();
-    
+
     try {
       // The `api` utility automatically adds the Authorization header
       const res = await api('/state/viewport-clusters', {
@@ -1823,7 +1870,7 @@ function ViewportClusterLayer() {
         })
       });
       setClusters(res.clusters || []);
-    } catch(err) {
+    } catch (err) {
       console.error('Failed to fetch viewport clusters', err);
     }
   };
@@ -2174,23 +2221,56 @@ function StateRequests() {
 }
 
 // ----------------------------------------------------
-// Official Login Experience
+// Official Hybrid Login & User Management Experience
 // ----------------------------------------------------
 function Login() {
-  const { login } = useAuth();
+  const { login, loginWithSession } = useAuth();
+  const { t } = useLanguage();
+  const [mode, setMode] = useState('demo'); // 'demo' | 'registered'
   const [role, setRole] = useState('farmer');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
+
+  // Farmer registration & login form state
+  const [farmerAction, setFarmerAction] = useState('login'); // 'login' | 'register'
+  const [farmerForm, setFarmerForm] = useState({
+    fullName: '',
+    email: '',
+    phone: '',
+    password: '',
+    confirmPassword: '',
+    district: 'Nashik'
+  });
+
+  // Government officer multi-step workflow state
+  const [govStep, setGovStep] = useState('verify'); // 'verify' | 'activate' | 'login'
+  const [govEmail, setGovEmail] = useState('');
+  const [verifiedOfficer, setVerifiedOfficer] = useState(null);
+  const [govPassword, setGovPassword] = useState('');
+  const [govConfirmPassword, setGovConfirmPassword] = useState('');
 
   const demoAccounts = [
-    { key: 'farmer', title: 'Livestock Owner / Farmer', name: 'Suresh Patil (9876543210)', scope: 'Village Pimpalgaon, Nashik' },
-    { key: 'vet', title: 'Government Veterinarian', name: 'Dr Ananya Shah (9000000001)', scope: 'Field Investigation, Nashik' },
-    { key: 'lab', title: 'Diagnostic Lab Officer', name: 'Nisha Rao (9000000002)', scope: 'District Disease Investigation Lab' },
-    { key: 'district', title: 'District Surveillance Officer', name: 'Vikram Deshmukh (9000000003)', scope: 'District Headquarter, Nashik' },
-    { key: 'state', title: 'State Animal Husbandry Officer', name: 'Priya Kulkarni (9000000004)', scope: 'State Command Center, Maharashtra' }
+    { key: 'farmer', title: t('roles.farmer', 'Livestock Owner / Farmer'), name: 'Suresh Patil (9876543210)', scope: 'Village Pimpalgaon, Nashik' },
+    { key: 'vet', title: t('roles.vet', 'Government Veterinarian'), name: 'Dr Ananya Shah (9000000001)', scope: 'Field Investigation, Nashik' },
+    { key: 'lab', title: t('roles.lab', 'Diagnostic Lab Officer'), name: 'Nisha Rao (9000000002)', scope: 'District Disease Investigation Lab' },
+    { key: 'district', title: t('roles.district', 'District Surveillance Officer'), name: 'Vikram Deshmukh (9000000003)', scope: 'District Headquarter, Nashik' },
+    { key: 'state', title: t('roles.state', 'State Animal Husbandry Officer'), name: 'Priya Kulkarni (9000000004)', scope: 'State Command Center, Maharashtra' }
   ];
 
-  const handleLogin = async r => {
+  const handleRoleChange = newRole => {
+    setRole(newRole);
+    setErr('');
+    setSuccessMsg('');
+    setGovStep('verify');
+    setVerifiedOfficer(null);
+    setGovEmail('');
+    setGovPassword('');
+    setGovConfirmPassword('');
+  };
+
+  // 1. Existing Demo Login (preserves 100% backward compatibility)
+  const handleDemoLogin = async r => {
     const selectedRole = r || role;
     setErr('');
     setLoading(true);
@@ -2203,12 +2283,164 @@ function Login() {
     }
   };
 
+  // 2. Real Farmer Login
+  const handleFarmerLogin = async e => {
+    if (e) e.preventDefault();
+    setErr('');
+    const id = (farmerForm.email || farmerForm.phone || '').trim();
+    if (!id) return setErr('Please enter your registered email or phone number');
+    if (!farmerForm.password) return setErr('Please enter your password');
+
+    setLoading(true);
+    try {
+      const res = await api('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          identifier: id,
+          password: farmerForm.password,
+          role: 'farmer'
+        })
+      });
+      loginWithSession(res);
+    } catch (x) {
+      setErr(x.message || 'Farmer login failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 3. Real Farmer Registration
+  const handleFarmerRegister = async e => {
+    if (e) e.preventDefault();
+    setErr('');
+    if (!farmerForm.fullName.trim()) return setErr('Full name is required');
+    if (!farmerForm.email.trim() && !farmerForm.phone.trim()) {
+      return setErr('Please provide an email or phone number');
+    }
+    if (!farmerForm.district) return setErr('Please select an approved district');
+    if (!farmerForm.password || farmerForm.password.length < 6) {
+      return setErr('Password must be at least 6 characters');
+    }
+    if (farmerForm.password !== farmerForm.confirmPassword) {
+      return setErr('Passwords do not match');
+    }
+
+    setLoading(true);
+    try {
+      const res = await api('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          fullName: farmerForm.fullName.trim(),
+          email: farmerForm.email.trim(),
+          phone: farmerForm.phone.trim(),
+          district: farmerForm.district,
+          password: farmerForm.password,
+          role: 'farmer'
+        })
+      });
+      loginWithSession(res);
+    } catch (x) {
+      setErr(x.message || 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 4. Government Email Verification
+  const handleVerifyGovEmail = async e => {
+    if (e) e.preventDefault();
+    setErr('');
+    setSuccessMsg('');
+    const em = govEmail.trim();
+    if (!em) return setErr('Please enter your official government email');
+
+    setLoading(true);
+    try {
+      const res = await api('/auth/verify-official-email', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: em,
+          role
+        })
+      });
+      setVerifiedOfficer(res);
+      if (res.accountActivated) {
+        setGovStep('login');
+      } else {
+        setGovStep('activate');
+        setSuccessMsg('Government identity verified. Please create your password to activate your official account.');
+      }
+    } catch (x) {
+      setErr(x.message || 'Government verification failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 5. Government First-Time Account Activation
+  const handleActivateGovAccount = async e => {
+    if (e) e.preventDefault();
+    setErr('');
+    if (!govPassword || govPassword.length < 6) {
+      return setErr('New password must be at least 6 characters');
+    }
+    if (govPassword !== govConfirmPassword) {
+      return setErr('Passwords do not match');
+    }
+
+    setLoading(true);
+    try {
+      const res = await api('/auth/activate-official-account', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: verifiedOfficer.email,
+          role,
+          password: govPassword
+        })
+      });
+      loginWithSession(res);
+    } catch (x) {
+      setErr(x.message || 'Activation failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 6. Government Activated Account Password Login
+  const handleGovLogin = async e => {
+    if (e) e.preventDefault();
+    setErr('');
+    if (!govPassword) return setErr('Please enter your account password');
+
+    setLoading(true);
+    try {
+      const res = await api('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({
+          identifier: verifiedOfficer ? verifiedOfficer.email : govEmail.trim(),
+          password: govPassword,
+          role
+        })
+      });
+      loginWithSession(res);
+    } catch (x) {
+      setErr(x.message || 'Authentication failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="login-wrap">
       <div className="login-topline" />
       <div className="govline">
-        <span>Government of India | Department of Animal Husbandry & Dairying</span>
-        <span>National Animal Disease Surveillance Portal</span>
+        <div className="govline-left">
+          <span>{t('govline.left1', 'भारत सरकार | Government of India')}</span>
+          <span>{t('govline.left2', 'पशुपालन और डेयरी विभाग | Department of Animal Husbandry & Dairying')}</span>
+        </div>
+        <div className="govline-right">
+          <LanguageSelector />
+        </div>
       </div>
 
       <div className="login-body">
@@ -2216,49 +2448,452 @@ function Login() {
           <div className="login-seal-box">
             <div className="seal">GOI</div>
             <div>
-              <b style={{ color: '#062b51', fontSize: '18px', display: 'block' }}>LDEWS Official Access</b>
-              <small style={{ color: '#627d98' }}>Department of Animal Husbandry & Dairying</small>
+              <b style={{ color: '#062b51', fontSize: '18px', display: 'block' }}>{t('brand.officialAccess', 'LDEWS Official Access')}</b>
+              <small style={{ color: '#627d98' }}>{t('brand.deptName', 'Department of Animal Husbandry & Dairying')}</small>
             </div>
           </div>
 
-          <h1>Authorized Portal Entry</h1>
-          <p>Select your operational role below to enter the role-specific disease surveillance workspace:</p>
-
-          <div className="role-cards">
-            {demoAccounts.map(a => (
-              <div
-                key={a.key}
-                className={`role-card-opt ${role === a.key ? 'selected' : ''}`}
-                onClick={() => setRole(a.key)}
-              >
-                <div>
-                  <strong>{a.title}</strong>
-                  <small>{a.name} · {a.scope}</small>
-                </div>
-                {role === a.key && <Check size={16} color="#0b4f8a" />}
-              </div>
-            ))}
+          {/* Mode Switcher (Demo Instant Access vs Official/Registered User Login) */}
+          <div className="auth-mode-tabs">
+            <button
+              type="button"
+              className={`auth-mode-tab ${mode === 'demo' ? 'active' : ''}`}
+              onClick={() => { setMode('demo'); setErr(''); setSuccessMsg(''); }}
+            >
+              ⚡ {t('auth.demoAccess', 'Demo Instant Access')}
+            </button>
+            <button
+              type="button"
+              className={`auth-mode-tab ${mode === 'registered' ? 'active' : ''}`}
+              onClick={() => { setMode('registered'); setErr(''); setSuccessMsg(''); }}
+            >
+              🔐 {t('auth.officialLogin', 'Official / Registered Login')}
+            </button>
           </div>
 
-          <button
-            className="primary"
-            style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: '14px', background: '#0b4f8a' }}
-            type="button"
-            disabled={loading}
-            onClick={() => handleLogin()}
-          >
-            {loading ? 'Authenticating Official Session...' : `Enter ${roles[role]} Workspace`}
-          </button>
+          {/* ======================================================== */}
+          {/* MODE 1: DEMO INSTANT ACCESS (100% PRESERVED PROTOTYPE)   */}
+          {/* ======================================================== */}
+          {mode === 'demo' && (
+            <>
+              <h1>{t('brand.officialAccess', 'Authorized Portal Entry')}</h1>
+              <p>{t('auth.selectRole', 'Select your operational role below to enter the role-specific disease surveillance workspace:')}</p>
+
+              <div className="role-cards">
+                {demoAccounts.map(a => (
+                  <div
+                    key={a.key}
+                    className={`role-card-opt ${role === a.key ? 'selected' : ''}`}
+                    onClick={() => setRole(a.key)}
+                  >
+                    <div>
+                      <strong>{a.title}</strong>
+                      <small>{a.name} · {a.scope}</small>
+                    </div>
+                    {role === a.key && <Check size={16} color="#0b4f8a" />}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                className="primary"
+                style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: '14px', background: '#0b4f8a' }}
+                type="button"
+                disabled={loading}
+                onClick={() => handleDemoLogin()}
+              >
+                {loading ? t('auth.authenticating', 'Authenticating Official Session...') : t('auth.enterWorkspace', `Enter ${roles[role]} Workspace`, { role: t(`roles.${role}`, roles[role]) })}
+              </button>
+
+              <div style={{ borderTop: '1px solid #e5edf5', marginTop: '20px', paddingTop: '12px', textAlign: 'center', fontSize: '11px', color: '#627d98' }}>
+                {t('auth.demoModeActive', 'Demo Authentication Active · Default Demo Password:')} <strong>demo123</strong>
+              </div>
+
+              <div style={{ textAlign: 'center', marginTop: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => { setMode('registered'); setErr(''); setSuccessMsg(''); }}
+                  style={{ background: 'none', border: 'none', color: '#0b4f8a', fontSize: '11px', cursor: 'pointer', textDecoration: 'underline' }}
+                >
+                  {t('auth.officialRegisteredDesc', 'Official / Registered User Login →')}
+                </button>
+              </div>
+            </>
+          )}
+
+          {/* ======================================================== */}
+          {/* MODE 2: REAL / REGISTERED AUTHENTICATION (HYBRID ACCESS) */}
+          {/* ======================================================== */}
+          {mode === 'registered' && (
+            <div>
+              <div style={{ marginBottom: '14px' }}>
+                <strong style={{ fontSize: '12px', color: '#334e68', display: 'block', marginBottom: '6px' }}>
+                  {t('auth.selectRole', 'Select Operational Role:')}
+                </strong>
+                <div className="role-pills">
+                  {demoAccounts.map(a => (
+                    <button
+                      key={a.key}
+                      type="button"
+                      className={`role-pill ${role === a.key ? 'active' : ''}`}
+                      onClick={() => handleRoleChange(a.key)}
+                    >
+                      {a.key === 'farmer' ? `🌾 ${t('roles.farmer', 'Farmer')}` : a.key === 'vet' ? `🩺 ${t('roles.vet', 'Vet Officer')}` : a.key === 'lab' ? `🧪 ${t('roles.lab', 'Lab Officer')}` : a.key === 'district' ? `🏛️ ${t('roles.district', 'District Officer')}` : `📍 ${t('roles.state', 'State Officer')}`}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* A. PUBLIC FARMER FLOW */}
+              {role === 'farmer' && (
+                <div>
+                  <div style={{ display: 'flex', borderBottom: '1px solid #e2e8f0', marginBottom: '16px' }}>
+                    <button
+                      type="button"
+                      onClick={() => { setFarmerAction('login'); setErr(''); }}
+                      style={{
+                        flex: 1,
+                        padding: '8px 0',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        background: 'none',
+                        border: 'none',
+                        borderBottom: farmerAction === 'login' ? '2px solid #0b4f8a' : 'none',
+                        color: farmerAction === 'login' ? '#0b4f8a' : '#64748b',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {t('auth.farmerTabLogin', 'Farmer Sign In')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setFarmerAction('register'); setErr(''); }}
+                      style={{
+                        flex: 1,
+                        padding: '8px 0',
+                        fontSize: '13px',
+                        fontWeight: '600',
+                        background: 'none',
+                        border: 'none',
+                        borderBottom: farmerAction === 'register' ? '2px solid #0b4f8a' : 'none',
+                        color: farmerAction === 'register' ? '#0b4f8a' : '#64748b',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {t('auth.farmerTabRegister', 'Register New Farmer')}
+                    </button>
+                  </div>
+
+                  {farmerAction === 'login' ? (
+                    <form onSubmit={handleFarmerLogin}>
+                      <div className="field">
+                        <label>{t('auth.identifierLabel', 'Registered Mobile Number or Email')}</label>
+                        <input
+                          type="text"
+                          placeholder={t('auth.identifierPlaceholder', 'e.g. 9876543210 or farmer@example.com')}
+                          value={farmerForm.email || farmerForm.phone}
+                          onChange={e => {
+                            const val = e.target.value;
+                            if (/^\d+$/.test(val)) {
+                              setFarmerForm({ ...farmerForm, phone: val, email: '' });
+                            } else {
+                              setFarmerForm({ ...farmerForm, email: val, phone: '' });
+                            }
+                          }}
+                          required
+                        />
+                      </div>
+
+                      <div className="field" style={{ marginTop: '12px' }}>
+                        <label>{t('auth.passwordLabel', 'Password')}</label>
+                        <input
+                          type="password"
+                          placeholder={t('auth.passwordPlaceholder', 'Enter your account password')}
+                          value={farmerForm.password}
+                          onChange={e => setFarmerForm({ ...farmerForm, password: e.target.value })}
+                          required
+                        />
+                      </div>
+
+                      <button
+                        className="primary"
+                        style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: '16px', background: '#0b4f8a' }}
+                        type="submit"
+                        disabled={loading}
+                      >
+                        {loading ? t('auth.authenticating', 'Authenticating...') : t('auth.signInFarmer', 'Sign In as Farmer')}
+                      </button>
+                    </form>
+                  ) : (
+                    <form onSubmit={handleFarmerRegister}>
+                      <div className="field">
+                        <label>{t('auth.fullNameLabel', 'Full Name *')}</label>
+                        <input
+                          type="text"
+                          placeholder={t('auth.fullNamePlaceholder', 'e.g. Ramesh Patil')}
+                          value={farmerForm.fullName}
+                          onChange={e => setFarmerForm({ ...farmerForm, fullName: e.target.value })}
+                          required
+                        />
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                        <div className="field">
+                          <label>{t('auth.mobileLabel', 'Mobile Number *')}</label>
+                          <input
+                            type="tel"
+                            placeholder={t('auth.mobilePlaceholder', 'e.g. 9876543210')}
+                            value={farmerForm.phone}
+                            onChange={e => setFarmerForm({ ...farmerForm, phone: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="field">
+                          <label>{t('auth.emailLabel', 'Email Address')}</label>
+                          <input
+                            type="email"
+                            placeholder={t('auth.emailPlaceholder', 'Optional email')}
+                            value={farmerForm.email}
+                            onChange={e => setFarmerForm({ ...farmerForm, email: e.target.value })}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="field" style={{ marginTop: '10px' }}>
+                        <label>{t('auth.districtLabel', 'Assigned District (Approved Prototype Districts) *')}</label>
+                        <select
+                          value={farmerForm.district}
+                          onChange={e => setFarmerForm({ ...farmerForm, district: e.target.value })}
+                          required
+                        >
+                          <option value="Nashik">Nashik (Maharashtra)</option>
+                          <option value="Pune">Pune (Maharashtra)</option>
+                          <option value="Ahmednagar">Ahmednagar (Maharashtra)</option>
+                        </select>
+                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '10px' }}>
+                        <div className="field">
+                          <label>{t('auth.createPasswordLabel', 'Password *')}</label>
+                          <input
+                            type="password"
+                            placeholder="Min 6 characters"
+                            value={farmerForm.password}
+                            onChange={e => setFarmerForm({ ...farmerForm, password: e.target.value })}
+                            required
+                          />
+                        </div>
+                        <div className="field">
+                          <label>{t('auth.confirmPasswordLabel', 'Confirm Password *')}</label>
+                          <input
+                            type="password"
+                            placeholder="Re-type password"
+                            value={farmerForm.confirmPassword}
+                            onChange={e => setFarmerForm({ ...farmerForm, confirmPassword: e.target.value })}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        className="primary"
+                        style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: '16px', background: '#0b4f8a' }}
+                        type="submit"
+                        disabled={loading}
+                      >
+                        {loading ? t('auth.creatingAccount', 'Creating Account...') : t('auth.createFarmerAccount', 'Create Farmer Account')}
+                      </button>
+                    </form>
+                  )}
+                </div>
+              )}
+
+              {/* B. GOVERNMENT OFFICER FLOW */}
+              {role !== 'farmer' && (
+                <div>
+                  <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '10px 14px', marginBottom: '14px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#062b51', fontWeight: '700', fontSize: '13px' }}>
+                      <Shield size={16} color="#0b4f8a" />
+                      <span>{t(`roles.${role}`, roles[role])}</span>
+                    </div>
+                    <small style={{ color: '#64748b', fontSize: '11px', display: 'block', marginTop: '2px' }}>
+                      {t('auth.govPortalBadge', 'Authorized Government Personnel Portal. Self-registration is restricted. Verified official email required.')}
+                    </small>
+                  </div>
+
+                  {/* STEP 1: VERIFY OFFICIAL EMAIL */}
+                  {govStep === 'verify' && (
+                    <form onSubmit={handleVerifyGovEmail}>
+                      <div className="field">
+                        <label>{t('auth.officialEmailLabel', 'Official Departmental Email Address')}</label>
+                        <input
+                          type="email"
+                          placeholder={t('auth.officialEmailPlaceholder', 'e.g. officer.district@gov.in')}
+                          value={govEmail}
+                          onChange={e => setGovEmail(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <button
+                        className="primary"
+                        style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: '16px', background: '#0b4f8a' }}
+                        type="submit"
+                        disabled={loading}
+                      >
+                        {loading ? t('auth.verifyingCreds', 'Verifying Official Identity...') : t('auth.verifyOfficialCreds', 'Verify Official Credentials')}
+                      </button>
+                    </form>
+                  )}
+
+                  {/* STEP 2A: FIRST-TIME ACCOUNT ACTIVATION */}
+                  {govStep === 'activate' && verifiedOfficer && (
+                    <form onSubmit={handleActivateGovAccount}>
+                      <div className="officer-badge-box">
+                        <div className="officer-badge-header">
+                          <CheckCircle2 size={16} color="#16a34a" />
+                          <span>{t('auth.govVerifiedBadge', 'Government Identity Verified')}</span>
+                        </div>
+                        <div className="officer-badge-grid">
+                          <div className="officer-badge-item">
+                            <strong>{t('auth.officerName', 'Officer Name')}</strong>
+                            <span>{verifiedOfficer.name}</span>
+                          </div>
+                          <div className="officer-badge-item">
+                            <strong>{t('auth.designation', 'Designation')}</strong>
+                            <span>{verifiedOfficer.designation}</span>
+                          </div>
+                          <div className="officer-badge-item">
+                            <strong>{t('auth.officialEmail', 'Official Email')}</strong>
+                            <span>{verifiedOfficer.email}</span>
+                          </div>
+                          <div className="officer-badge-item">
+                            <strong>{t('auth.assignedJurisdiction', 'Assigned Jurisdiction')}</strong>
+                            <span>{verifiedOfficer.district || 'State Command'}</span>
+                          </div>
+                          <div className="officer-badge-item">
+                            <strong>{t('auth.employeeId', 'Employee ID')}</strong>
+                            <span>{verifiedOfficer.employeeId}</span>
+                          </div>
+                          <div className="officer-badge-item">
+                            <strong>{t('auth.department', 'Department')}</strong>
+                            <span>{t('auth.departmentValue', 'Animal Husbandry')}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <p style={{ fontSize: '12px', color: '#475569', marginBottom: '10px' }}>
+                        {t('auth.firstLoginNotice', 'This is your first login. Please create a secure password to activate your official government account:')}
+                      </p>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                        <div className="field">
+                          <label>{t('auth.createPasswordLabel', 'Create Password *')}</label>
+                          <input
+                            type="password"
+                            placeholder="Min 6 characters"
+                            value={govPassword}
+                            onChange={e => setGovPassword(e.target.value)}
+                            required
+                          />
+                        </div>
+                        <div className="field">
+                          <label>{t('auth.confirmPasswordLabel', 'Confirm Password *')}</label>
+                          <input
+                            type="password"
+                            placeholder="Re-type password"
+                            value={govConfirmPassword}
+                            onChange={e => setGovConfirmPassword(e.target.value)}
+                            required
+                          />
+                        </div>
+                      </div>
+
+                      <button
+                        className="primary"
+                        style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: '16px', background: '#0b4f8a' }}
+                        type="submit"
+                        disabled={loading}
+                      >
+                        {loading ? t('auth.activatingBtn', 'Activating Official Account...') : t('auth.activateAccountBtn', 'Activate Official Account & Enter')}
+                      </button>
+
+                      <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                        <button
+                          type="button"
+                          onClick={() => { setGovStep('verify'); setVerifiedOfficer(null); setGovPassword(''); setErr(''); }}
+                          style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '11px', cursor: 'pointer' }}
+                        >
+                          {t('auth.verifyDifferentEmail', '← Verify a different official email')}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* STEP 2B: ACTIVATED OFFICER PASSWORD LOGIN */}
+                  {govStep === 'login' && verifiedOfficer && (
+                    <form onSubmit={handleGovLogin}>
+                      <div className="officer-badge-box">
+                        <div className="officer-badge-header">
+                          <Shield size={16} color="#0b4f8a" />
+                          <span>{t('auth.welcomeBack', `Welcome back, ${verifiedOfficer.name}`, { name: verifiedOfficer.name })}</span>
+                        </div>
+                        <div style={{ fontSize: '12px', color: '#475569', marginTop: '4px' }}>
+                          {verifiedOfficer.designation} · {t('auth.assignedJurisdiction', 'Assigned Jurisdiction')}: <strong>{verifiedOfficer.district || 'State Command'}</strong>
+                        </div>
+                      </div>
+
+                      <p style={{ fontSize: '12px', color: '#475569', marginBottom: '10px' }}>
+                        {t('auth.enterPasswordToAccess', 'Enter your password to access your official workspace.')}
+                      </p>
+
+                      <div className="field">
+                        <label>{t('auth.passwordLabel', 'Account Password')}</label>
+                        <input
+                          type="password"
+                          placeholder={t('auth.passwordPlaceholder', 'Enter your account password')}
+                          value={govPassword}
+                          onChange={e => setGovPassword(e.target.value)}
+                          required
+                          autoFocus
+                        />
+                      </div>
+
+                      <button
+                        className="primary"
+                        style={{ width: '100%', justifyContent: 'center', padding: '12px', marginTop: '16px', background: '#0b4f8a' }}
+                        type="submit"
+                        disabled={loading}
+                      >
+                        {loading ? t('auth.authenticating', 'Authenticating Official Session...') : t('auth.signInOfficialWorkspace', 'Login to Official Command Center')}
+                      </button>
+
+                      <div style={{ textAlign: 'center', marginTop: '12px' }}>
+                        <button
+                          type="button"
+                          onClick={() => { setGovStep('verify'); setVerifiedOfficer(null); setGovPassword(''); setErr(''); }}
+                          style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '11px', cursor: 'pointer' }}
+                        >
+                          {t('auth.useDifferentEmail', '← Use a different official email')}
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="notice" style={{ background: '#f0fdf4', borderColor: '#16a34a', color: '#166534', marginTop: '14px' }}>
+              {successMsg}
+            </div>
+          )}
 
           {err && (
             <div className="notice" style={{ background: '#fef3f2', borderColor: '#b42318', color: '#b42318', marginTop: '14px' }}>
               {err}
             </div>
           )}
-
-          <div style={{ borderTop: '1px solid #e5edf5', marginTop: '20px', paddingTop: '12px', textAlign: 'center', fontSize: '11px', color: '#627d98' }}>
-            Demo Authentication Active · Default Demo Password: <strong>demo123</strong>
-          </div>
         </div>
       </div>
     </div>
@@ -2297,6 +2932,11 @@ function App() {
     setSession(r);
   };
 
+  const loginWithSession = sessionData => {
+    localStorage.setItem('ldews-session', JSON.stringify(sessionData));
+    setSession(sessionData);
+  };
+
   const logout = () => {
     localStorage.removeItem('ldews-session');
     setSession(null);
@@ -2304,14 +2944,14 @@ function App() {
 
   if (!session) {
     return (
-      <Auth.Provider value={{ login }}>
+      <Auth.Provider value={{ login, loginWithSession }}>
         <Login />
       </Auth.Provider>
     );
   }
 
   return (
-    <Auth.Provider value={{ ...session, login, logout }}>
+    <Auth.Provider value={{ ...session, login, loginWithSession, logout }}>
       <Routes>
         {/* Farmer Routes */}
         <Route path="/farmer" element={<RoleGuard roles={['farmer']}><FarmerHome /></RoleGuard>} />
@@ -2347,6 +2987,8 @@ function App() {
 
 createRoot(document.getElementById('root')).render(
   <BrowserRouter>
-    <App />
+    <LanguageProvider>
+      <App />
+    </LanguageProvider>
   </BrowserRouter>
 );

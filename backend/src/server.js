@@ -15,12 +15,14 @@ import {
   ActionRequest,
   HistoricalDiseaseRecord,
   District,
-  Village
+  Village,
+  APPROVED_DISTRICTS
 } from './models/index.js';
 import multer from 'multer';
 import { predict, predictDistrictRisk } from './services/mlService.js';
 import { healthCheckML, predictImage, detectOutbreaks } from './services/mlClient.js';
 import { processReport, collectSample, notify } from './services/workflowService.js';
+import { getRequestLanguage, localizeDisease } from './services/localizationService.js';
 import { seedDatabase } from './seed.js';
 
 const app = express();
@@ -60,7 +62,7 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-LDEWS-Language', 'Accept-Language']
 };
 
 app.use(cors(corsOptions));
@@ -69,7 +71,16 @@ app.use(express.json());
 
 // Token helpers
 const tokenFor = u => jwt.sign(
-  { id: u._id, role: u.role, name: u.name, phone: u.phone, district: u.district, taluka: u.taluka },
+  {
+    id: u._id,
+    role: u.role,
+    name: u.name,
+    phone: u.phone,
+    email: u.email,
+    district: u.district,
+    taluka: u.taluka,
+    accountType: u.accountType || 'public'
+  },
   secret,
   { expiresIn: '8h' }
 );
@@ -81,7 +92,12 @@ const publicUser = u => ({
   email: u.email,
   role: u.role,
   district: u.district,
-  taluka: u.taluka
+  taluka: u.taluka,
+  accountType: u.accountType || 'public',
+  accountActivated: u.accountActivated !== false,
+  organization: u.organization || 'Department of Animal Husbandry & Dairying',
+  designation: u.designation || '',
+  employeeId: u.employeeId || ''
 });
 
 // Authentication middleware
@@ -177,25 +193,250 @@ app.get('/api/ml/health', async (_, res) => {
 });
 
 // --- Authentication Routes ---
-app.post('/api/auth/login', async (req, res, next) => {
+
+// 1. Farmer Self-Registration (Strictly restricted to public farmers)
+app.post('/api/auth/register', async (req, res, next) => {
   try {
-    const { identifier, password } = req.body;
-    if (!identifier || !password) {
-      return res.status(400).json({ message: 'Phone/email and password are required' });
+    const { fullName, name, email, phone, password, district, taluka, village, role } = req.body;
+
+    // Strict security: Reject any attempt to register non-farmer roles via public API
+    if (role && role !== 'farmer') {
+      return res.status(403).json({
+        message: 'Government officer accounts cannot be created through public registration. Please contact the administrative registry.'
+      });
     }
-    const u = await User.findOne({
-      $or: [{ phone: identifier }, { email: identifier }],
-      active: true
+
+    const userName = (fullName || name || '').trim();
+    if (!userName) {
+      return res.status(400).json({ message: 'Full name is required' });
+    }
+
+    const userEmail = (email || '').trim().toLowerCase();
+    const userPhone = (phone || '').trim();
+
+    if (!userEmail && !userPhone) {
+      return res.status(400).json({ message: 'Email or phone number is required' });
+    }
+
+    if (!password || password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+
+    const selectedDistrict = (district || '').trim();
+    if (!selectedDistrict || !APPROVED_DISTRICTS.includes(selectedDistrict)) {
+      return res.status(400).json({
+        message: `Please select an approved district (${APPROVED_DISTRICTS.join(', ')})`
+      });
+    }
+
+    // Check duplicate email or phone
+    const existing = await User.findOne({
+      $or: [
+        ...(userEmail ? [{ email: userEmail }] : []),
+        ...(userPhone ? [{ phone: userPhone }] : [])
+      ]
     });
-    if (!u || !u.password || !await bcrypt.compare(password, u.password)) {
-      return res.status(401).json({ message: 'Invalid phone, email or password' });
+
+    if (existing) {
+      if (userEmail && existing.email === userEmail) {
+        return res.status(409).json({ message: 'An account with this email already exists' });
+      }
+      return res.status(409).json({ message: 'An account with this phone number already exists' });
     }
-    res.json({ token: tokenFor(u), user: publicUser(u) });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = await User.create({
+      name: userName,
+      email: userEmail || undefined,
+      phone: userPhone || undefined,
+      password: hashedPassword,
+      role: 'farmer',
+      district: selectedDistrict,
+      taluka: taluka || undefined,
+      accountType: 'public',
+      accountActivated: true,
+      designation: 'Livestock Owner / Farmer'
+    });
+
+    res.status(201).json({
+      message: 'Farmer account registered successfully',
+      token: tokenFor(newUser),
+      user: publicUser(newUser),
+      authMode: 'real'
+    });
   } catch (err) {
     next(err);
   }
 });
 
+// 2. Government Official Email Verification (Identity check against pre-provisioned registry)
+app.post('/api/auth/verify-official-email', async (req, res, next) => {
+  try {
+    const { email, role } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Official government email is required' });
+    }
+    if (!role) {
+      return res.status(400).json({ message: 'Operational role is required' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const officer = await User.findOne({ email: normalizedEmail });
+
+    if (!officer) {
+      return res.status(404).json({
+        message: 'This official email is not registered in the government personnel registry.'
+      });
+    }
+
+    if (!officer.active) {
+      return res.status(403).json({
+        message: 'Your official government account is currently inactive. Contact your department administrator.'
+      });
+    }
+
+    const roleLabels = {
+      farmer: 'Livestock Owner / Farmer',
+      vet: 'Government Veterinary Officer',
+      lab: 'Diagnostic Laboratory Officer',
+      district: 'District Surveillance Officer',
+      state: 'State Animal Husbandry Officer'
+    };
+
+    if (officer.role !== role) {
+      return res.status(403).json({
+        message: 'This official email is not authorized for the selected operational role.'
+      });
+    }
+
+    if (officer.accountType !== 'government') {
+      return res.status(403).json({
+        message: 'This email is not designated as an authorized government personnel account.'
+      });
+    }
+
+    res.json({
+      verified: true,
+      email: officer.email,
+      name: officer.name,
+      role: officer.role,
+      district: officer.district,
+      taluka: officer.taluka,
+      designation: officer.designation || roleLabels[officer.role] || 'Government Officer',
+      organization: officer.organization || 'Department of Animal Husbandry & Dairying',
+      employeeId: officer.employeeId || 'GOV-AUTH',
+      accountActivated: Boolean(officer.accountActivated)
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 3. Government First-Time Account Activation (Password creation for pre-authorized personnel)
+app.post('/api/auth/activate-official-account', async (req, res, next) => {
+  try {
+    const { email, role, password } = req.body;
+    if (!email || !password || !role) {
+      return res.status(400).json({ message: 'Email, role, and new password are required' });
+    }
+    if (password.length < 6) {
+      return res.status(400).json({ message: 'Password must be at least 6 characters long' });
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    const officer = await User.findOne({ email: normalizedEmail, active: true });
+
+    if (!officer) {
+      return res.status(404).json({ message: 'Officer record not found in government registry' });
+    }
+
+    if (officer.role !== role) {
+      return res.status(403).json({ message: 'This official email is not authorized for the selected operational role.' });
+    }
+
+    if (officer.accountType !== 'government') {
+      return res.status(403).json({ message: 'Only authorized government personnel may activate official accounts' });
+    }
+
+    if (officer.accountActivated) {
+      return res.status(400).json({
+        message: 'This account has already been activated. Please log in using your official password.'
+      });
+    }
+
+    officer.password = await bcrypt.hash(password, 10);
+    officer.accountActivated = true;
+    await officer.save();
+
+    res.json({
+      message: 'Official government account successfully activated',
+      token: tokenFor(officer),
+      user: publicUser(officer),
+      authMode: 'real'
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 4. Live Credential Login (For registered farmers and activated government officers)
+app.post('/api/auth/login', async (req, res, next) => {
+  try {
+    const { identifier, password, role } = req.body;
+    if (!identifier || !password) {
+      return res.status(400).json({ message: 'Phone/email and password are required' });
+    }
+
+    const trimmedId = identifier.trim();
+    const u = await User.findOne({
+      $or: [
+        { email: trimmedId.toLowerCase() },
+        { phone: trimmedId }
+      ],
+      active: true
+    });
+
+    if (!u || !u.password || !await bcrypt.compare(password, u.password)) {
+      return res.status(401).json({ message: 'Invalid phone/email or password' });
+    }
+
+    // Isolate demo accounts from live password login per architectural safeguard
+    if (u.accountType === 'demo') {
+      return res.status(403).json({
+        message: 'Demo accounts must use the Demo Instant Access mode on the role selection page.'
+      });
+    }
+
+    const roleLabels = {
+      farmer: 'Livestock Owner / Farmer',
+      vet: 'Government Veterinary Officer',
+      lab: 'Diagnostic Laboratory Officer',
+      district: 'District Surveillance Officer',
+      state: 'State Animal Husbandry Officer'
+    };
+
+    // Role check if specific role portal login was requested
+    if (role && u.role !== role) {
+      return res.status(403).json({
+        message: 'This official email is not authorized for the selected operational role.'
+      });
+    }
+
+    // Check government account activation
+    if (u.accountType === 'government' && !u.accountActivated) {
+      return res.status(403).json({
+        message: 'Your official account has not been activated yet. Please verify your email and set your password first.'
+      });
+    }
+
+    res.json({ token: tokenFor(u), user: publicUser(u), authMode: 'real' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 5. Preserved Demo Login (Instant hackathon demo access)
 app.post('/api/auth/demo-login', async (req, res, next) => {
   try {
     const role = req.body.role || 'farmer';
@@ -203,7 +444,18 @@ app.post('/api/auth/demo-login', async (req, res, next) => {
     if (!u) {
       return res.status(503).json({ message: `No demo user found for role '${role}'. Please run 'npm run seed' first.` });
     }
-    res.json({ token: tokenFor(u), user: publicUser(u) });
+    res.json({ token: tokenFor(u), user: publicUser(u), authMode: 'demo' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// 6. Current Authenticated User Profile
+app.get('/api/auth/me', auth(), async (req, res, next) => {
+  try {
+    const u = await User.findById(req.user.id);
+    if (!u) return res.status(404).json({ message: 'User not found' });
+    res.json(publicUser(u));
   } catch (err) {
     next(err);
   }
@@ -320,11 +572,13 @@ app.post('/api/reports', auth(['farmer']), (req, res, next) => {
     }
 
     const farmer = await User.findById(req.user.id);
+    const reqLang = getRequestLanguage(req, req.body);
     const data = await processReport({
       ...req.body,
       symptoms,
       location: loc,
       source: req.body.source || 'web',
+      language: reqLang,
       imageScreening,
       photoUrl
     }, farmer);
@@ -341,10 +595,18 @@ app.post('/api/reports', auth(['farmer']), (req, res, next) => {
 
 app.get('/api/reports/my', auth(['farmer']), async (req, res, next) => {
   try {
+    const reqLang = getRequestLanguage(req);
     const reports = await FarmerReport.find({ farmer: req.user.id })
       .sort({ createdAt: -1 })
       .populate('advisory');
-    res.json(reports);
+
+    const localized = reports.map(r => {
+      const obj = r.toObject();
+      obj.suspectedDiseaseDisplay = localizeDisease(r.suspectedDisease, reqLang);
+      return obj;
+    });
+
+    res.json(localized);
   } catch (err) {
     next(err);
   }
@@ -357,7 +619,10 @@ app.get('/api/reports/:id', auth(['farmer', 'vet', 'lab', 'district', 'state']),
     if (req.user.role === 'farmer' && String(c.farmer) !== req.user.id) {
       return res.status(403).json({ message: 'Unauthorized to view this report' });
     }
-    res.json(c);
+    const reqLang = getRequestLanguage(req);
+    const obj = c.toObject();
+    obj.suspectedDiseaseDisplay = localizeDisease(c.suspectedDisease, reqLang);
+    res.json(obj);
   } catch (err) {
     next(err);
   }
@@ -384,9 +649,11 @@ app.post('/api/ivr/report', async (req, res, next) => {
       });
     }
 
+    const reqLang = getRequestLanguage(req, b);
     const data = await processReport({
       ...b,
       source: 'ivr',
+      language: reqLang,
       location: {
         district: b.district,
         taluka: b.taluka || '',
