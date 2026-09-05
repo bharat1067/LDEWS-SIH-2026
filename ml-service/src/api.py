@@ -226,7 +226,8 @@ def detect_outbreaks(req: ClusterRequest):
         db = HDBSCAN(
             min_cluster_size=req.min_cases,
             metric="haversine",
-            cluster_selection_epsilon=eps_rad
+            cluster_selection_epsilon=eps_rad,
+            allow_single_cluster=True
         ).fit(coords)
         labels = db.labels_
 

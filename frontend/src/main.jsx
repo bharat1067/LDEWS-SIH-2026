@@ -190,7 +190,7 @@ function Shell({ children }) {
             <span>पशुपालन और डेयरी विभाग | Department of Animal Husbandry & Dairying</span>
           </div>
           <div className="govline-right">
-            <span className="lang-switch">English | हिंदी | मराठी</span>
+            <span className="lang-switch" onClick={() => alert('Language translation (Hindi/Marathi) is a work-in-progress module.')} style={{ cursor: 'pointer' }}>English | हिंदी | मराठी</span>
             <span className="helpline-pill"><Phone size={11} /> Helpline: 1962</span>
           </div>
         </div>
@@ -1513,7 +1513,6 @@ function DistrictHome() {
                   <span className={`badge ${d.clusters?.some(c => c.source === 'hdbscan') ? 'green' : 'amber'}`}>
                     {d.clusters?.some(c => c.source === 'hdbscan') ? 'HDBSCAN Active' : 'Fallback Density'}
                   </span>
-                  <Badge>RADIUS: 15 KM</Badge>
                 </div>
               </div>
 

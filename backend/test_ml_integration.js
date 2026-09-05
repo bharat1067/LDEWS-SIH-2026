@@ -5,7 +5,7 @@
  * 1. GET /api/ml/health with FastAPI online
  * 2. POST /api/reports symptom prediction via FastAPI (mlSource = fastapi)
  * 3. POST /api/reports multipart image screening via FastAPI (imageScreening)
- * 4. GET /api/district/:district/clusters via DBSCAN
+ * 4. GET /api/district/:district/clusters via HDBSCAN
  * 5. Transparent fallback behavior when FastAPI is offline
  */
 
@@ -90,19 +90,19 @@ async function runTests() {
   assert(imgReportData.report.imageScreening?.prediction === 'Normal Skin', 'Image screening prediction preserved on case');
   assert(imgReportData.report.imageScreening?.source === 'fastapi', 'Image screening source is fastapi');
 
-  // 5. Test DBSCAN Outbreak Detection via mlClient
-  console.log('\n4. Testing DBSCAN Outbreak Detection:');
-  const dbscanCases = [
+  // 5. Test HDBSCAN Outbreak Detection via mlClient
+  console.log('\n4. Testing HDBSCAN Outbreak Detection:');
+  const hdbscanCases = [
     { report_id: 1, latitude: 20.084, longitude: 73.985 },
     { report_id: 2, latitude: 20.086, longitude: 73.987 },
     { report_id: 3, latitude: 20.085, longitude: 73.986 }
   ];
-  const dbscanResult = await detectOutbreaks({ radiusKm: 15, minCases: 2, cases: dbscanCases });
-  console.log('  DBSCAN result:', dbscanResult);
-  assert(dbscanResult.success === true, 'DBSCAN call succeeded');
-  assert(dbscanResult.source === 'dbscan', 'DBSCAN source is dbscan');
-  assert(dbscanResult.outbreaks.length >= 1, 'At least 1 spatial cluster detected');
-  assert(dbscanResult.outbreaks[0].sumCases === 3, 'Cluster contains 3 connected cases');
+  const hdbscanResult = await detectOutbreaks({ radiusKm: 15, minCases: 2, cases: hdbscanCases });
+  console.log('  HDBSCAN result:', hdbscanResult);
+  assert(hdbscanResult.success === true, 'HDBSCAN call succeeded');
+  assert(hdbscanResult.source === 'hdbscan', 'HDBSCAN source is hdbscan');
+  assert(hdbscanResult.outbreaks.length >= 1, 'At least 1 spatial cluster detected');
+  assert(hdbscanResult.outbreaks[0].sumCases === 3, 'Cluster contains 3 connected cases');
 
   // 6. Test Graceful Fallback Simulation
   console.log('\n5. Testing Graceful Fallback when ML Service is Unreachable:');

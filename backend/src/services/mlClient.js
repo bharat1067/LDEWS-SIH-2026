@@ -194,7 +194,7 @@ export async function detectOutbreaks({ radiusKm = 15.0, minCases = 3, cases = [
 
   return {
     success: true,
-    source: 'dbscan',
+    source: 'hdbscan',
     outbreaks: res.data.outbreaks || []
   };
 }
