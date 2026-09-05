@@ -58,7 +58,7 @@ The server runs on `http://0.0.0.0:8000` by default.
 
 ## 3. Spatial Outbreak Detection
 **Endpoint**: `POST /detect-outbreaks`
-**Description**: Runs the DBSCAN clustering algorithm over raw GPS coordinates using the Haversine metric to detect active disease outbreak epicenters.
+**Description**: Runs the HDBSCAN clustering algorithm (using `cluster_selection_epsilon` and `min_cluster_size` parameters) over raw GPS coordinates using the Haversine metric to detect active disease outbreak epicenters.
 
 ### Input (JSON Request Body)
 ```json

@@ -78,8 +78,9 @@ Field Worker (Mobile App / React Frontend)
                        │                                    "cases": [...GPS coords for specific disease...] }
                        │                                  │
                        │                                  ▼
-                       │                         [ML] DBSCAN Clustering
+                       │                         [ML] HDBSCAN Clustering
                        │                              (Haversine Metric)
+                       │                              Params: cluster_selection_epsilon, min_cluster_size
                        │                                  │
                        │                         Output: { "outbreaks": [
                        │                                    { "cluster_id": 0,
@@ -98,10 +99,10 @@ Field Worker (Mobile App / React Frontend)
                        │
                        │  STEP 3: Escalation Decision Logic:              🔲 TODO (Node.js)
                        │  ┌───────────────────────────────────────────────────────────────┐
-                       │  │ IF confidence_score < 0.60          (flag from POST /predict) │
-                       │  │    OR disease_id IN HIGH_RISK_LIST  (check diseases SQL table) │
-                       │  │    OR sumCases > 5 in area          (flag from /detect-outbr.) │
-                       │  │                                                               │
+                       │  │ IF localOutbreakRisk >= 70          (dynamic epidemiological score) │
+                       │  │    OR disease_id IN HIGH_RISK_LIST  (reqVet flag)                   │
+                       │  │    OR confidence_score < 0.60       (model is unsure, need human)   │
+                       │  │                                                                     │
                        │  │  -> NOTIFY nearest Veterinarian (push notification/email)     │
                        │  │  -> INSERT vet_verifications row                              │
                        │  │                                                               │
