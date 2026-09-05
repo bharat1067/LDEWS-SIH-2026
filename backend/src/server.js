@@ -648,7 +648,7 @@ async function districtStats(district) {
 
   const minCases = Number(process.env.CLUSTER_MIN_CASES || 2);
 
-  // Attempt real spatial clustering via FastAPI DBSCAN endpoint
+  // Attempt real spatial clustering via FastAPI HDBSCAN endpoint
   let clusters = [];
   const validCoordCases = active.filter(
     c => typeof c.location?.latitude === 'number' && typeof c.location?.longitude === 'number'
@@ -704,7 +704,7 @@ async function districtStats(district) {
               taluka: first?.location?.taluka || '',
               disease: disease,
               risk: maxRisk,
-              source: 'dbscan'
+              source: 'hdbscan'
             };
           });
           clusters.push(...diseaseClusters);
@@ -715,7 +715,7 @@ async function districtStats(district) {
     }
   }
 
-  // Fallback to village-density grouping if DBSCAN returned no clusters or was unavailable
+  // Fallback to village-density grouping if HDBSCAN returned no clusters or was unavailable
   if (!clusters.length) {
     const clusterMap = active.reduce((acc, c) => {
       const key = `${c.location.village}|${c.suspectedDisease}`;
@@ -996,7 +996,7 @@ app.post('/api/state/viewport-clusters', auth(['state', 'district']), async (req
               district: uniqueDistricts.join(', ') || '',
               disease: disease,
               risk: maxRisk,
-              source: 'dbscan'
+              source: 'hdbscan'
             };
           });
           clusters.push(...diseaseClusters);

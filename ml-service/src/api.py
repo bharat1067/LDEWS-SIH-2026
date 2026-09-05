@@ -209,8 +209,8 @@ class ClusterRequest(BaseModel):
 
 @app.post("/detect-outbreaks")
 def detect_outbreaks(req: ClusterRequest):
-    """Spatial outbreak cluster detection using DBSCAN with Haversine distance."""
-    from sklearn.cluster import DBSCAN
+    """Spatial outbreak cluster detection using HDBSCAN with Haversine distance."""
+    from sklearn.cluster import HDBSCAN
 
     if not req.cases or len(req.cases) < req.min_cases:
         return {"outbreaks": []}
@@ -223,7 +223,11 @@ def detect_outbreaks(req: ClusterRequest):
 
         # Earth radius in km = 6371.0
         eps_rad = req.radius_km / 6371.0
-        db = DBSCAN(eps=eps_rad, min_samples=req.min_cases, algorithm="ball_tree", metric="haversine").fit(coords)
+        db = HDBSCAN(
+            min_cluster_size=req.min_cases,
+            metric="haversine",
+            cluster_selection_epsilon=eps_rad
+        ).fit(coords)
         labels = db.labels_
 
         outbreaks = []
